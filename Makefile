@@ -14,7 +14,7 @@ $(BINARY): version.go main.go
 $(WINBINARY): version.go main.go
 	GOOS=windows go build -ldflags="-w -s" -o $@
 
-version.go: 
+version.go:
 	go generate
 
 $(INSTALLER): $(BINARY) scripts/installer.sh

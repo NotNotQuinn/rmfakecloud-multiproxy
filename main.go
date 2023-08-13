@@ -130,10 +130,15 @@ func _main() error {
 
 	upstreamQuery := upstream.RawQuery
 	director := func(req *http.Request) {
+		// Logging for debugging
+		fmt.Printf("Got request (from %s): %s (host) %s (uri) %s\n", req.RemoteAddr, req.Method, req.Host, req.URL.RequestURI())
 		req.URL.Scheme = upstream.Scheme
+		req.URL.Path, req.URL.RawPath = req.URL.Path, req.URL.RawPath
+		req.URL.Host = req.URL.Host //// ???????
+		req.Host = req.Host         //// ??????? does this do anything
+		return                      // early return
 		req.Host = upstream.Host
 		req.URL.Host = upstream.Host
-		req.URL.Path, req.URL.RawPath = joinURLPath(upstream, req.URL)
 		if upstreamQuery == "" || req.URL.RawQuery == "" {
 			req.URL.RawQuery = upstreamQuery + req.URL.RawQuery
 		} else {
@@ -148,6 +153,11 @@ func _main() error {
 	srv := http.Server{
 		Handler: &httputil.ReverseProxy{
 			Director: director,
+			// Tmp for logging
+			ModifyResponse: func(resp *http.Response) error {
+				fmt.Printf("Response from upstream: %v\n", resp)
+				return nil
+			},
 		},
 		Addr: cfg.Addr,
 	}
