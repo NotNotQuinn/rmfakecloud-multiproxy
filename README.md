@@ -12,7 +12,7 @@ If you are looking to add domain names, you must
 
 1. identify the domain names (wireshark?)
 1. add them to installer.sh (both `[ san ]` and `/etc/hosts`)
-1. recompile and reinstall (`make upload`)
+1. recompile and reinstall
 
 ## Usage
 ```
