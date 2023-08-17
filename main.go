@@ -27,6 +27,7 @@ import (
 type Config struct {
 	CertFile string `yaml:"cert"`
 	KeyFile  string `yaml:"key"`
+	Upstream string `yaml:"upstream"`
 	Addr     string `yaml:"addr"`
 }
 
