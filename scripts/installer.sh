@@ -23,13 +23,13 @@ function fixsync(){
 }
 
 function install_proxyservice(){
-cloudurl=$1
-echo "Setting cloud sync to: ${cloudurl}"
-workdir=$DESTINATION
-cat > $workdir/proxy.cfg <<EOF
+    cloudurl=$1
+    echo "Setting cloud sync to: ${cloudurl}"
+    workdir=$DESTINATION
+    cat > $workdir/proxy.cfg <<EOF
 URL=
 EOF
-cat > /etc/systemd/system/${UNIT_NAME}.service <<EOF
+    cat > /etc/systemd/system/${UNIT_NAME}.service <<EOF
 [Unit]
 Description=reverse proxy
 #StartLimitIntervalSec=600
@@ -45,9 +45,9 @@ ExecStart=$workdir/${BINARY} -cert $workdir/proxy.bundle.crt -key $workdir/proxy
 [Install]
 WantedBy=multi-user.target
 EOF
-systemctl daemon-reload
-systemctl enable ${UNIT_NAME}
-systemctl restart ${UNIT_NAME}
+    systemctl daemon-reload
+    systemctl enable ${UNIT_NAME}
+    systemctl restart ${UNIT_NAME}
 }
 
 function uninstall(){
@@ -68,9 +68,9 @@ function uninstall(){
 }
 
 function generate_certificates(){
-# thanks to  https://gist.github.com/Soarez/9688998
+    # thanks to  https://gist.github.com/Soarez/9688998
 
-cat <<EOF > csr.conf
+    cat <<EOF > csr.conf
 [ req ]
 default_bits = 2048
 default_keyfile = proxy.key
@@ -106,48 +106,48 @@ DNS.4 = *.cloud.remarkable.engineering
 DNS.5 = *.rmfakecloud.localhost
 EOF
 
-# ca
-if [ ! -f ca.crt ]; then
-    echo "Generating CA key and crt..."
-    openssl genrsa -out ca.key 2048
-    openssl req -new -sha256 -x509 -key ca.key -out ca.crt -days 3650 -subj /CN=rmfakecloud
-    rm -f proxy.key
-    rm -f proxy.pubkey
-else
-    echo "CA exists"
-fi
+    # ca
+    if [ ! -f ca.crt ]; then
+        echo "Generating CA key and crt..."
+        openssl genrsa -out ca.key 2048
+        openssl req -new -sha256 -x509 -key ca.key -out ca.crt -days 3650 -subj /CN=rmfakecloud
+        rm -f proxy.key
+        rm -f proxy.pubkey
+    else
+        echo "CA exists"
+    fi
 
-if [ ! -f proxy.key ]; then
-    echo "Generating private key..."
-    openssl genrsa -out proxy.key 2048
-    rm -f proxy.pubkey
-else
-    echo "Private key exists"
-fi
+    if [ ! -f proxy.key ]; then
+        echo "Generating private key..."
+        openssl genrsa -out proxy.key 2048
+        rm -f proxy.pubkey
+    else
+        echo "Private key exists"
+    fi
 
-if [ ! -f proxy.pubkey ]; then
-    echo "Generating pub key..."
-    openssl rsa -in proxy.key -pubout -out proxy.pubkey
-    rm -f proxy.crt
-else
-    echo "Pub key exists"
-fi
+    if [ ! -f proxy.pubkey ]; then
+        echo "Generating pub key..."
+        openssl rsa -in proxy.key -pubout -out proxy.pubkey
+        rm -f proxy.crt
+    else
+        echo "Pub key exists"
+    fi
 
-if [ ! -f proxy.crt ]; then
-    echo "Generating csr and crt..."
-    openssl req -new -config ./csr.conf -key proxy.key -out proxy.csr
+    if [ ! -f proxy.crt ]; then
+        echo "Generating csr and crt..."
+        openssl req -new -config ./csr.conf -key proxy.key -out proxy.csr
 
-    # Signing
-    openssl x509 -req  -in proxy.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out proxy.crt -days 3650 -extfile csr.conf -extensions caext
-    cat proxy.crt ca.crt > proxy.bundle.crt
+        # Signing
+        openssl x509 -req  -in proxy.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out proxy.crt -days 3650 -extfile csr.conf -extensions caext
+        cat proxy.crt ca.crt > proxy.bundle.crt
 
-    #echo "showing result"
-    #openssl x509 -in proxy.bundle.crt -text -noout
+        #echo "showing result"
+        #openssl x509 -in proxy.bundle.crt -text -noout
 
-    echo "Generation complete!"
-else
-    echo "crt exists"
-fi
+        echo "Generation complete!"
+    else
+        echo "crt exists"
+    fi
 }
 
 function install_certificates(){
