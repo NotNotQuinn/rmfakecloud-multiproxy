@@ -5,10 +5,11 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -18,7 +19,9 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
+	"github.com/miekg/dns"
 	"gopkg.in/yaml.v3"
 )
 
@@ -58,7 +61,7 @@ func getConfig() (config *Config, err error) {
 
 	if configFile != "" {
 		var data []byte
-		data, err = ioutil.ReadFile(configFile)
+		data, err = os.ReadFile(configFile)
 
 		if err != nil {
 			return
@@ -84,38 +87,57 @@ func getConfig() (config *Config, err error) {
 	return &cfg, nil
 }
 
-func singleJoiningSlash(a, b string) string {
-	aslash := strings.HasSuffix(a, "/")
-	bslash := strings.HasPrefix(b, "/")
-	switch {
-	case aslash && bslash:
-		return a + b[1:]
-	case !aslash && !bslash:
-		return a + "/" + b
-	}
-	return a + b
+type dnsCacheEntry struct {
+	expires time.Time
+	ip      net.IP
 }
 
-func joinURLPath(a, b *url.URL) (path, rawpath string) {
-	if a.RawPath == "" && b.RawPath == "" {
-		return singleJoiningSlash(a.Path, b.Path), ""
-	}
-	// Same as singleJoiningSlash, but uses EscapedPath to determine
-	// whether a slash should be added
-	apath := a.EscapedPath()
-	bpath := b.EscapedPath()
+var dns_client = dns.Client{}
+var dns_cache = map[string]dnsCacheEntry{}
 
-	aslash := strings.HasSuffix(apath, "/")
-	bslash := strings.HasPrefix(bpath, "/")
+// edited from https://stackoverflow.com/questions/30043248#31627459
+//
+// We can't resolve using the system because we patched /etc/hosts,
+// so we will just get back 127.0.0.1 -> end up with recursion
+func resolve_host(domain string) (*net.IP, error) {
+	server := "1.1.1.1:53" // Cloudflare DNS
 
-	switch {
-	case aslash && bslash:
-		return a.Path + b.Path[1:], apath + bpath[1:]
-	case !aslash && !bslash:
-		return a.Path + "/" + b.Path, apath + "/" + bpath
+	// Check cache
+	if entry, ok := dns_cache[domain]; ok {
+		if time.Now().Before(entry.expires) {
+			return &entry.ip, nil
+		}
 	}
-	return a.Path + b.Path, apath + bpath
+
+	// Not cached, raw dns request
+	m := dns.Msg{}
+	m.SetQuestion(dns.Fqdn(domain), dns.TypeA)
+	r, t, err := dns_client.Exchange(&m, server)
+	if err != nil {
+		return nil, fmt.Errorf("DNS: %q: error: %v", domain, err)
+	}
+	for _, ans := range r.Answer {
+		A_record := ans.(*dns.A)
+
+		// Implement some rudimentary caching
+		ttl := time.Duration(A_record.Hdr.Ttl) * time.Second
+		dns_cache[domain] = dnsCacheEntry{
+			expires: time.Now().Add(ttl),
+			ip:      A_record.A,
+		}
+
+		log.Printf("DNS: %q: %s (ttl %d)", domain, A_record.A, ttl)
+		return &A_record.A, nil
+	}
+
+	return nil, fmt.Errorf("DNS: %q: no result in %v", domain, t)
 }
+
+// Formatted request as a string.
+//
+// Stores requested URL on the first line,
+// and the request body from httputil.DumpRequest(...) on the second.
+type ContextKey_Formatted_Request = struct{}
 
 func _main() error {
 	cfg, err := getConfig()
@@ -128,34 +150,51 @@ func _main() error {
 		return fmt.Errorf("invalid upstream address: %v", err)
 	}
 
-	upstreamQuery := upstream.RawQuery
-	director := func(req *http.Request) {
-		// Logging for debugging
-		fmt.Printf("Got request (from %s): %s (host) %s (uri) %s\n", req.RemoteAddr, req.Method, req.Host, req.URL.RequestURI())
-		req.URL.Scheme = upstream.Scheme
-		req.URL.Path, req.URL.RawPath = req.URL.Path, req.URL.RawPath
-		req.URL.Host = req.URL.Host //// ???????
-		req.Host = req.Host         //// ??????? does this do anything
-		return                      // early return
-		req.Host = upstream.Host
-		req.URL.Host = upstream.Host
-		if upstreamQuery == "" || req.URL.RawQuery == "" {
-			req.URL.RawQuery = upstreamQuery + req.URL.RawQuery
-		} else {
-			req.URL.RawQuery = upstreamQuery + "&" + req.URL.RawQuery
-		}
-		if _, ok := req.Header["User-Agent"]; !ok {
-			// explicitly disable User-Agent so it's not set to default value
-			req.Header.Set("User-Agent", "")
-		}
-	}
-
 	srv := http.Server{
 		Handler: &httputil.ReverseProxy{
-			Director: director,
-			// Tmp for logging
-			ModifyResponse: func(resp *http.Response) error {
-				fmt.Printf("Response from upstream: %v\n", resp)
+			Rewrite: func(req *httputil.ProxyRequest) {
+				// :443 is sometimes appended in 2.15? Never seen it on 3.5.2
+				domain := strings.TrimSuffix(req.In.Host, ":443")
+				requested_url := fmt.Sprintf("%s https://%s%s", req.In.Method, domain, req.In.URL)
+				request_content, err := httputil.DumpRequest(req.Out, true)
+				if err != nil {
+					fmt.Printf("error dumping request %q: %v\n", requested_url, err)
+					return
+				}
+
+				req.Out.URL.Scheme = "https"
+				// Save this information to print later, because of async printing/buffer issues.
+				req.Out = req.Out.WithContext(context.WithValue(
+					context.Background(),
+					ContextKey_Formatted_Request{},
+					fmt.Sprintf("%s\n%s", requested_url, request_content),
+				))
+
+				ip, err := resolve_host(domain)
+				if err != nil {
+					log.Println(err)
+					log.Printf("Unable to resolve host %q\n", domain)
+					return
+				}
+				req.Out.URL.Host = fmt.Sprint(ip)
+			},
+			// Ignore TLS verify, because we are accessing by IP address
+			// remarkable's certs don't include ip records. """impossible""" to verify.
+			// Unless you can figure out how to tell it that we know the domain name,
+			// or integrate resolve_host(...) into the transport directly. DialContext?
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+			},
+			ModifyResponse: func(r *http.Response) error {
+				request_content := r.Request.Context().Value(ContextKey_Formatted_Request{}).(string)
+				response_content, err := httputil.DumpResponse(r, true)
+				// All in one print statement to avoid async printing issues with many requests.
+				if err != nil {
+					fmt.Printf("===== Round Trip: %s\n===\nerror dumping response: %s\n===\n", request_content, err)
+					return err
+				} else {
+					fmt.Printf("===== Round Trip: %s\n===\n%s\n===\n", request_content, response_content)
+				}
 				return nil
 			},
 		},
