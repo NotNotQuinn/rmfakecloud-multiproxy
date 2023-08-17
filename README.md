@@ -1,32 +1,42 @@
 # rmfakecloud-proxy
-Single-minded HTTPS reverse proxy
+Single-minded HTTPS reverse proxy -> repurposed as a domain-targeted network logger
 
 (forked from https://github.com/yi-jiayu/secure)
 
+Log xochitl traffic.
+
+    journalctl -u proxy -f
+
+Note: Not all traffic is logged, only certain domain names.
+If you are looking to add domain names, you must
+
+1. identify the domain names (wireshark?)
+1. add them to installer.sh (both `[ san ]` and `/etc/hosts`)
+1. recompile and reinstall (`make upload`)
 
 ## Usage
 ```
-usage: secure [-addr host:port] -cert certfile -key keyfile upstream
+usage: rmfake-proxy -c [config.yml] [-addr host:port] -cert certfile -key keyfile [-version]
   -addr string
         listen address (default ":443")
+  -c string
+        config file
   -cert string
         path to cert file
   -key string
         path to key file
-  -c configfile
-  upstream string
-        upstream url
+  -version
+        print version string and exit
 ```
 
 ### Example
 ```
-secure -cert cert.pem -key key.pem http://localhost:6060
+rmfake-proxy -cert cert.pem -key key.pem
 ```
 
 ## Configfile
 ```yaml
-cert: proxy.crt 
+cert: proxy.crt
 key: proxy.key
-upstream: https://somehost:123
 #addr: :443
 ```
