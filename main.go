@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -46,9 +47,10 @@ func getConfig() (config *Config, err error) {
 
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(),
-			"usage: %s -c [config.yml] [-addr host:port] -cert certfile -key keyfile [-version]\n",
+			"usage: %s -c [config.yml] [-addr host:port] -cert certfile -key keyfile [-version] upstream\n",
 			filepath.Base(os.Args[0]))
 		flag.PrintDefaults()
+		fmt.Fprintln(flag.CommandLine.Output(), "  upstream string\n    \tupstream url")
 	}
 	flag.Parse()
 
@@ -73,6 +75,13 @@ func getConfig() (config *Config, err error) {
 
 		}
 		return &cfg, nil
+	}
+
+	if flag.NArg() == 1 {
+		cfg.Upstream = flag.Arg(0)
+	} else {
+		flag.Usage()
+		os.Exit(2)
 	}
 
 	return &cfg, nil
@@ -134,6 +143,11 @@ func _main() error {
 	cfg, err := getConfig()
 	if err != nil {
 		return err
+	}
+
+	upstream, err := url.Parse(cfg.Upstream)
+	if err != nil {
+		return fmt.Errorf("invalid upstream address: %v", err)
 	}
 
 	srv := http.Server{
@@ -199,7 +213,7 @@ func _main() error {
 		close(done)
 	}()
 
-	log.Printf("cert-file=%s key-file=%s listen-addr=%s", cfg.CertFile, cfg.KeyFile, srv.Addr)
+	log.Printf("cert-file=%s key-file=%s listen-addr=%s upstream-url=%s", cfg.CertFile, cfg.KeyFile, srv.Addr, upstream.String())
 	if err := srv.ListenAndServeTLS(cfg.CertFile, cfg.KeyFile); err != http.ErrServerClosed {
 		return fmt.Errorf("ListenAndServeTLS: %v", err)
 	}

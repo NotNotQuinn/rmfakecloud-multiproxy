@@ -23,13 +23,15 @@ function fixsync(){
 }
 
 function install_proxyservice(){
-    workdir=$DESTINATION
-    cat > $workdir/proxy.cfg <<EOF
+cloudurl=$1
+echo "Setting cloud sync to: ${cloudurl}"
+workdir=$DESTINATION
+cat > $workdir/proxy.cfg <<EOF
 URL=
 EOF
-    cat > /etc/systemd/system/${UNIT_NAME}.service <<EOF
+cat > /etc/systemd/system/${UNIT_NAME}.service <<EOF
 [Unit]
-Description=request logger
+Description=reverse proxy
 #StartLimitIntervalSec=600
 #StartLimitBurst=4
 After=home.mount
@@ -38,14 +40,14 @@ After=home.mount
 Environment=HOME=/home/root
 #EnvironmentFile=$workdir/proxy.cfg
 WorkingDirectory=$workdir
-ExecStart=$workdir/${BINARY} -cert $workdir/proxy.bundle.crt -key $workdir/proxy.key
+ExecStart=$workdir/${BINARY} -cert $workdir/proxy.bundle.crt -key $workdir/proxy.key ${cloudurl}
 
 [Install]
 WantedBy=multi-user.target
 EOF
-    systemctl daemon-reload
-    systemctl enable ${UNIT_NAME}
-    systemctl restart ${UNIT_NAME}
+systemctl daemon-reload
+systemctl enable ${UNIT_NAME}
+systemctl restart ${UNIT_NAME}
 }
 
 function uninstall(){
@@ -68,7 +70,7 @@ function uninstall(){
 function generate_certificates(){
 # thanks to  https://gist.github.com/Soarez/9688998
 
-    cat <<EOF > csr.conf
+cat <<EOF > csr.conf
 [ req ]
 default_bits = 2048
 default_keyfile = proxy.key
@@ -104,48 +106,48 @@ DNS.4 = *.cloud.remarkable.engineering
 DNS.5 = *.rmfakecloud.localhost
 EOF
 
-    # ca
-    if [ ! -f ca.crt ]; then
-        echo "Generating CA key and crt..."
-        openssl genrsa -out ca.key 2048
-        openssl req -new -sha256 -x509 -key ca.key -out ca.crt -days 3650 -subj /CN=rmfakecloud
-        rm -f proxy.key
-        rm -f proxy.pubkey
-    else
-        echo "CA exists"
-    fi
+# ca
+if [ ! -f ca.crt ]; then
+    echo "Generating CA key and crt..."
+    openssl genrsa -out ca.key 2048
+    openssl req -new -sha256 -x509 -key ca.key -out ca.crt -days 3650 -subj /CN=rmfakecloud
+    rm -f proxy.key
+    rm -f proxy.pubkey
+else
+    echo "CA exists"
+fi
 
-    if [ ! -f proxy.key ]; then
-        echo "Generating private key..."
-        openssl genrsa -out proxy.key 2048
-        rm -f proxy.pubkey
-    else
-        echo "Private key exists"
-    fi
+if [ ! -f proxy.key ]; then
+    echo "Generating private key..."
+    openssl genrsa -out proxy.key 2048
+    rm -f proxy.pubkey
+else
+    echo "Private key exists"
+fi
 
-    if [ ! -f proxy.pubkey ]; then
-        echo "Generating pub key..."
-        openssl rsa -in proxy.key -pubout -out proxy.pubkey
-        rm -f proxy.crt
-    else
-        echo "Pub key exists"
-    fi
+if [ ! -f proxy.pubkey ]; then
+    echo "Generating pub key..."
+    openssl rsa -in proxy.key -pubout -out proxy.pubkey
+    rm -f proxy.crt
+else
+    echo "Pub key exists"
+fi
 
-    if [ ! -f proxy.crt ]; then
-        echo "Generating csr and crt..."
-        openssl req -new -config ./csr.conf -key proxy.key -out proxy.csr
+if [ ! -f proxy.crt ]; then
+    echo "Generating csr and crt..."
+    openssl req -new -config ./csr.conf -key proxy.key -out proxy.csr
 
-        # Signing
-        openssl x509 -req  -in proxy.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out proxy.crt -days 3650 -extfile csr.conf -extensions caext
-        cat proxy.crt ca.crt > proxy.bundle.crt
+    # Signing
+    openssl x509 -req  -in proxy.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out proxy.crt -days 3650 -extfile csr.conf -extensions caext
+    cat proxy.crt ca.crt > proxy.bundle.crt
 
-        #echo "showing result"
-        #openssl x509 -in proxy.bundle.crt -text -noout
+    #echo "showing result"
+    #openssl x509 -in proxy.bundle.crt -text -noout
 
-        echo "Generation complete!"
-    else
-        echo "crt exists"
-    fi
+    echo "Generation complete!"
+else
+    echo "crt exists"
+fi
 }
 
 function install_certificates(){
@@ -178,6 +180,11 @@ EOF
 
 }
 
+function getproxy(){
+    read -p "Enter your own cloud url [http(s)://somehost:port] >" url
+    echo $url
+}
+
 function doinstall(){
     echo "Extracting embedded binary..."
     unpack
@@ -185,7 +192,11 @@ function doinstall(){
     generate_certificates
     install_certificates
     # install proxy
-    install_proxyservice
+    url=$1
+    if [ -z $url ]; then
+         url=$(getproxy)
+    fi
+    install_proxyservice $url
     echo "Patching /etc/hosts"
     patch_hosts
     echo "Stoping xochitl.."
@@ -194,11 +205,9 @@ function doinstall(){
     fixsync
     echo "Starting xochitl..."
     systemctl start xochitl
-    echo "To view requests, run:"
-    echo "    journalctl --unit=proxy --follow"
-    echo "or  journalctl -u proxy -f"
     popd
 }
+
 
 case $1 in
     "uninstall" )
@@ -206,31 +215,42 @@ case $1 in
         ;;
 
      "install" )
-        doinstall
+        shift 1
+        doinstall $1
         ;;
 
      "gencert" )
         generate_certificates
         ;;
 
+     "setcloud" )
+        shift 1
+        url=$1
+        if [ $# -lt 1 ]; then
+             url=$(getproxy)
+        fi
+        install_proxyservice $url
+        ;;
+
      * )
 
 cat <<EOF
-passive request logger installer
+rmFakeCloud reverse proxy installer
 
 Usage:
 
-install
-    installs request logging
-    restarts xochitl
-    View logs: journalctl -u proxy -f
+install [cloudurl]
+    installs and asks for cloud url
 
 uninstall
-    uninstall, removes everything,
-    restarts xochitl
+    uninstall, removes everything
 
 gencert
     generate certificates
+
+setcloud [cloudurl]
+    changes the cloud address to
+
 EOF
         ;;
 
