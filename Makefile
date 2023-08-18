@@ -1,6 +1,6 @@
-BINARY=dist/rmfake-multiproxy
-WINBINARY=dist/rmfake-multiproxy.exe
-LINUXBINARY=dist/rmfake-multiproxy64
+BINARY=dist/rmfakecloud-multiproxy
+WINBINARY=dist/rmfakecloud-multiproxy.exe
+LINUXBINARY=dist/rmfakecloud-multiproxy64
 INSTALLER=dist/installer.sh
 .PHONY: clean
 all: $(INSTALLER) $(WINBINARY) $(LINUXBINARY)
@@ -17,9 +17,9 @@ $(WINBINARY): version.go main.go
 version.go:
 	go generate
 
-$(INSTALLER): $(BINARY) scripts/installer.sh
+$(INSTALLER): $(BINARY) scripts/installer.sh scripts/rmfakecloud-multiproxy.service scripts/rmfakecloudctl
 	cp scripts/installer.sh $@
-	gzip -c $(BINARY) >> $@
+	tar -czvO -C dist `basename $(BINARY)` -C ../scripts rmfakecloud-multiproxy.service rmfakecloudctl >> $@
 	chmod +x $@
 clean:
 	rm -fr dist

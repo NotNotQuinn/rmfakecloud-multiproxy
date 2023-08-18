@@ -6,7 +6,7 @@ Currently you can:
 
 ## Usage
 ```
-usage: rmfake-multiproxy -c [config.yml] [-addr host:port] -cert certfile -key keyfile [-version]
+usage: rmfakecloud-multiproxy -c [config.yml] [-addr host:port] -cert certfile -key keyfile [-version]
   -addr string
         listen address (default ":443")
   -c string
@@ -21,7 +21,7 @@ usage: rmfake-multiproxy -c [config.yml] [-addr host:port] -cert certfile -key k
 
 ### Example
 ```
-rmfake-multiproxy -cert cert.pem -key key.pem
+rmfakecloud-multiproxy -cert cert.pem -key key.pem
 ```
 
 ## Configfile

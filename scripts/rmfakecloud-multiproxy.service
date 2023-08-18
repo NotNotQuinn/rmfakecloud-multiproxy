@@ -8,6 +8,8 @@ ConditionPathExists=/opt/etc/rmfakecloud-multiproxy/config
 
 [Service]
 Environment=HOME=/home/root
+# The ExecStart binary is changed when running install.sh,
+# This is the path when installed with toltec.
 ExecStart=/opt/bin/rmfakecloud-multiproxy -c /opt/etc/rmfakecloud-multiproxy/config
 Restart=on-failure
 
