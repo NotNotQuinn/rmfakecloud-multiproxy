@@ -35,8 +35,8 @@ function doinstall(){
     rm -vf $RMFAKECLOUDCTL_SYMLINK
     ln -vs "${DESTINATION}/rmfakecloudctl" "$RMFAKECLOUDCTL_SYMLINK"
 
-    # Change the binary path
-    sed -i 's/\/opt\/bin\/rmfakecloud-multiproxy/\/home\/root\/rmfakecloud\/rmfakecloud-multiproxy/' ${DESTINATION}/rmfakecloud-multiproxy.service
+    # Change the ExecStart path
+    sed -i 's/^ExecStart=\/opt\/bin/ExecStart=\/home\/root\/rmfakecloud/' ${DESTINATION}/rmfakecloud-multiproxy.service
     cp -v ${DESTINATION}/rmfakecloud-multiproxy.service /etc/systemd/system/${UNIT_NAME}.service
     systemctl daemon-reload
 
