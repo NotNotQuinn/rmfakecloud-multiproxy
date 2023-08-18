@@ -1,4 +1,4 @@
-module github.com/ddvk/rmfakecloud-proxy
+module github.com/notnotquinn/rmfakecloud-multiproxy
 
 go 1.20
 

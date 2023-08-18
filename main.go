@@ -1,6 +1,7 @@
 //go:generate go run generate/versioninfo.go
 
-// rmfake-proxy is a fork of "secure", which is a super simple TLS termination proxy
+// rmfakecloud-multiproxy is a configurable reverse proxy to inject
+// virtual cloud integrations and log network traffic
 package main
 
 import (

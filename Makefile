@@ -1,6 +1,6 @@
-BINARY=dist/rmfake-proxy
-WINBINARY=dist/rmfake-proxy.exe
-LINUXBINARY=dist/rmfake-proxy64
+BINARY=dist/rmfake-multiproxy
+WINBINARY=dist/rmfake-multiproxy.exe
+LINUXBINARY=dist/rmfake-multiproxy64
 INSTALLER=dist/installer.sh
 .PHONY: clean
 all: $(INSTALLER) $(WINBINARY) $(LINUXBINARY)
