@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
-	"time"
 )
 
 // See documentation in configDocs
@@ -146,8 +145,8 @@ func newConfig() ConfigFile {
 	cfg := ConfigFile{}
 
 	if reflect.TypeOf(cfg).NumField() != len(configDocs) {
-		fmt.Println("number of fields on ConfigFile do not match length of documented fields")
-		fmt.Println("\\=== Fix this")
+		fmt.Fprintln(os.Stderr, "number of fields on ConfigFile do not match length of documented fields")
+		fmt.Fprintln(os.Stderr, "\\=== Fix this")
 		os.Exit(1)
 	}
 
@@ -163,11 +162,8 @@ func newConfig() ConfigFile {
 func getConfig() (config *ConfigFile, err error) {
 	cfg := newConfig()
 
-	stdout := flag.CommandLine.Output()
-
 	var (
 		configFile     string
-		dumpConfig     bool
 		getDocs        bool
 		getUsage       bool
 		getVersion     bool
@@ -183,13 +179,12 @@ func getConfig() (config *ConfigFile, err error) {
 	})
 	flag.StringVar(&configFile, "c", "", "")
 	flag.BoolVar(&getDocs, "docs", false, "")
-	flag.BoolVar(&dumpConfig, "dumpconfig", false, "")
 	flag.BoolVar(&getVersion, "v", false, "")
 	flag.BoolVar(&getVersion, "version", false, "")
 	flag.BoolVar(&getUsage, "h", false, "")
 	flag.BoolVar(&getUsage, "help", false, "")
 	flag.Usage = func() {
-		usage := "usage: %[1]s [--dumpconfig] [-c config] [-C OPTION=VALUE]...\n"
+		usage := "usage: %[1]s [-c config] [-C OPTION=VALUE]...\n"
 		usage += "       %[1]s [-h] [-v] [--help] [--version] [--docs]\n"
 		usage += "  -C OPTION=VALUE\n"
 		usage += "        Explicitly set OPTION=VALUE\n"
@@ -200,13 +195,11 @@ func getConfig() (config *ConfigFile, err error) {
 		usage += "Early-exit options:\n"
 		usage += "  --docs\n"
 		usage += "        Print documentation for config options and exit\n"
-		usage += "  --dumpconfig\n"
-		usage += "        Print current configuration and exit\n"
 		usage += "  -h, --help\n"
 		usage += "        Print this help message and exit\n"
 		usage += "  -v, --version\n"
 		usage += "        Print version and exit\n"
-		fmt.Fprintf(stdout, usage, filepath.Base(os.Args[0]))
+		fmt.Fprintf(os.Stdout, usage, filepath.Base(os.Args[0]))
 	}
 
 	flag.Parse()
@@ -216,7 +209,7 @@ func getConfig() (config *ConfigFile, err error) {
 		os.Exit(0)
 	}
 	if getVersion {
-		fmt.Fprintln(stdout, Version)
+		fmt.Fprintln(os.Stdout, Version)
 		os.Exit(0)
 	}
 	if getDocs {
@@ -254,7 +247,7 @@ func getConfig() (config *ConfigFile, err error) {
 			}
 			doc += "\n"
 		}
-		fmt.Fprint(stdout, doc)
+		fmt.Fprint(os.Stdout, doc)
 		os.Exit(0)
 	}
 
@@ -279,15 +272,5 @@ func getConfig() (config *ConfigFile, err error) {
 		}
 	}
 
-	if dumpConfig {
-		dump := "# config dump " + time.Now().Format(time.DateTime) + "\n"
-		value := reflect.ValueOf(cfg)
-		for i := 0; i < value.Type().NumField(); i++ {
-			field := value.Type().Field(i)
-			dump += fmt.Sprintf("%s=%v\n", field.Tag.Get("cfg"), value.Field(i).Interface())
-		}
-		fmt.Fprint(stdout, dump)
-		os.Exit(0)
-	}
 	return &cfg, nil
 }
