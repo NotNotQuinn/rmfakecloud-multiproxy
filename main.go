@@ -7,138 +7,16 @@ package main
 import (
 	"context"
 	"crypto/tls"
-	"flag"
 	"fmt"
 	"log"
-	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"os"
 	"os/signal"
-	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
-	"time"
-
-	"github.com/miekg/dns"
-	"gopkg.in/yaml.v3"
 )
-
-type Config struct {
-	CertFile string `yaml:"cert"`
-	KeyFile  string `yaml:"key"`
-	Upstream string `yaml:"upstream"`
-	Addr     string `yaml:"addr"`
-}
-
-var (
-	version    bool
-	configFile string
-)
-
-func getConfig() (config *Config, err error) {
-	cfg := Config{}
-	flag.StringVar(&configFile, "c", "", "config file")
-	flag.StringVar(&cfg.Addr, "addr", ":443", "listen address")
-	flag.StringVar(&cfg.CertFile, "cert", "", "path to cert file")
-	flag.StringVar(&cfg.KeyFile, "key", "", "path to key file")
-	flag.BoolVar(&version, "version", false, "print version string and exit")
-
-	flag.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(),
-			"usage: %s -c [config.yml] [-addr host:port] -cert certfile -key keyfile [-version] upstream\n",
-			filepath.Base(os.Args[0]))
-		flag.PrintDefaults()
-		fmt.Fprintln(flag.CommandLine.Output(), "  upstream string\n    \tupstream url")
-	}
-	flag.Parse()
-
-	if version {
-		fmt.Fprintln(flag.CommandLine.Output(), Version)
-		os.Exit(0)
-	}
-
-	if configFile != "" {
-		var data []byte
-		data, err = os.ReadFile(configFile)
-
-		if err != nil {
-			return
-		}
-		err = yaml.Unmarshal(data, &cfg)
-		if err != nil {
-			return nil, fmt.Errorf("cant parse config, %v", err)
-		}
-		if _, err := strconv.Atoi(cfg.Addr); err == nil {
-			cfg.Addr = ":" + cfg.Addr
-
-		}
-		return &cfg, nil
-	}
-
-	if flag.NArg() == 1 {
-		cfg.Upstream = flag.Arg(0)
-	} else {
-		flag.Usage()
-		os.Exit(2)
-	}
-
-	return &cfg, nil
-}
-
-type dnsCacheEntry struct {
-	expires time.Time
-	ip      net.IP
-}
-
-var dns_client = dns.Client{}
-var dns_cache = map[string]dnsCacheEntry{}
-
-// edited from https://stackoverflow.com/questions/30043248#31627459
-//
-// We can't resolve using the system because we patched /etc/hosts,
-// so we will just get back 127.0.0.1 -> end up with recursion
-func resolve_host(domain string) (*net.IP, error) {
-	server := "1.1.1.1:53" // Cloudflare DNS
-
-	// Check cache
-	if entry, ok := dns_cache[domain]; ok {
-		if time.Now().Before(entry.expires) {
-			return &entry.ip, nil
-		}
-	}
-
-	// Not cached, raw dns request
-	m := dns.Msg{}
-	m.SetQuestion(dns.Fqdn(domain), dns.TypeA)
-	r, t, err := dns_client.Exchange(&m, server)
-	if err != nil {
-		return nil, fmt.Errorf("DNS: %q: error: %v", domain, err)
-	}
-	for _, ans := range r.Answer {
-		A_record := ans.(*dns.A)
-
-		// Implement some rudimentary caching
-		ttl := time.Duration(A_record.Hdr.Ttl) * time.Second
-		dns_cache[domain] = dnsCacheEntry{
-			expires: time.Now().Add(ttl),
-			ip:      A_record.A,
-		}
-
-		log.Printf("DNS: %q: %s (ttl %d)", domain, A_record.A, ttl)
-		return &A_record.A, nil
-	}
-
-	return nil, fmt.Errorf("DNS: %q: no result in %v", domain, t)
-}
-
-// Formatted request as a string.
-//
-// Stores requested URL on the first line,
-// and the request body from httputil.DumpRequest(...) on the second.
-type ContextKey_Formatted_Request = struct{}
 
 func _main() error {
 	cfg, err := getConfig()
@@ -146,7 +24,7 @@ func _main() error {
 		return err
 	}
 
-	upstream, err := url.Parse(cfg.Upstream)
+	upstream, err := url.Parse(cfg.UpstreamCloudURL)
 	if err != nil {
 		return fmt.Errorf("invalid upstream address: %v", err)
 	}
@@ -167,7 +45,7 @@ func _main() error {
 				// Save this information to print later, because of async printing/buffer issues.
 				req.Out = req.Out.WithContext(context.WithValue(
 					context.Background(),
-					ContextKey_Formatted_Request{},
+					"rmfakecloud.orig-request-str",
 					fmt.Sprintf("%s\n%s", requested_url, request_content),
 				))
 
@@ -187,7 +65,7 @@ func _main() error {
 				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 			},
 			ModifyResponse: func(r *http.Response) error {
-				request_content := r.Request.Context().Value(ContextKey_Formatted_Request{}).(string)
+				request_content := r.Request.Context().Value("rmfakecloud.orig-request-str").(string)
 				response_content, err := httputil.DumpResponse(r, true)
 				// All in one print statement to avoid async printing issues with many requests.
 				if err != nil {
@@ -199,7 +77,7 @@ func _main() error {
 				return nil
 			},
 		},
-		Addr: cfg.Addr,
+		Addr: cfg.BindAddress,
 	}
 
 	done := make(chan struct{})
@@ -214,8 +92,8 @@ func _main() error {
 		close(done)
 	}()
 
-	log.Printf("cert-file=%s key-file=%s listen-addr=%s upstream-url=%s", cfg.CertFile, cfg.KeyFile, srv.Addr, upstream.String())
-	if err := srv.ListenAndServeTLS(cfg.CertFile, cfg.KeyFile); err != http.ErrServerClosed {
+	log.Printf("cert-file=%s key-file=%s listen-addr=%s upstream-url=%s", cfg.TLSCertificateFile, cfg.TLSKeyFile, srv.Addr, upstream.String())
+	if err := srv.ListenAndServeTLS(cfg.TLSCertificateFile, cfg.TLSKeyFile); err != http.ErrServerClosed {
 		return fmt.Errorf("ListenAndServeTLS: %v", err)
 	}
 

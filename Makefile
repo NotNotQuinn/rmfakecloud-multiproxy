@@ -2,19 +2,20 @@ BINARY=dist/rmfakecloud-multiproxy
 WINBINARY=dist/rmfakecloud-multiproxy.exe
 LINUXBINARY=dist/rmfakecloud-multiproxy64
 INSTALLER=dist/installer.sh
-.PHONY: clean
+.PHONY: clean .FORCE
 all: $(INSTALLER) $(WINBINARY) $(LINUXBINARY)
+GOSRCFILES=main.go dns.go conf.go
 
-$(LINUXBINARY): version.go main.go
+$(LINUXBINARY): version.go $(GOSRCFILES)
 	go build -ldflags="-w -s" -o $@
 
-$(BINARY): version.go main.go
+$(BINARY): version.go $(GOSRCFILES)
 	GOARCH=arm GOARM=7 go build -ldflags="-w -s" -o $@
 
-$(WINBINARY): version.go main.go
+$(WINBINARY): version.go $(GOSRCFILES)
 	GOOS=windows go build -ldflags="-w -s" -o $@
 
-version.go:
+version.go: generate/versioninfo.go .FORCE
 	go generate
 
 $(INSTALLER): $(BINARY) scripts/installer.sh scripts/rmfakecloud-multiproxy.service scripts/rmfakecloudctl
