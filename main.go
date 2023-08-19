@@ -77,7 +77,7 @@ func _main() error {
 				return nil
 			},
 		},
-		Addr: cfg.BindAddress,
+		Addr: cfg.ProxyListenAddr + ":443",
 	}
 
 	done := make(chan struct{})
