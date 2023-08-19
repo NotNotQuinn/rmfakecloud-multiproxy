@@ -37,7 +37,7 @@ function doinstall(){
 
     # Change the ExecStart path
     sed -i 's/^ExecStart=\/opt\/bin/ExecStart=\/home\/root\/rmfakecloud/' ${DESTINATION}/rmfakecloud-multiproxy.service
-    cp -v ${DESTINATION}/rmfakecloud-multiproxy.service /etc/systemd/system/${UNIT_NAME}.service
+    cp ${DESTINATION}/rmfakecloud-multiproxy.service /etc/systemd/system/${UNIT_NAME}.service
     systemctl daemon-reload
 
     echo "==== Running \`rmfakecloudctl status\`..."
