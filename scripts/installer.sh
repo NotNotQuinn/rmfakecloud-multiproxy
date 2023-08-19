@@ -7,7 +7,7 @@ set -e
 
 UNIT_NAME=rmfakecloud-multiproxy
 DESTINATION="/home/root/rmfakecloud"
-RMFAKECLOUDCTL_SYMLINK="/usr/bin/rmfakecloudctl"
+SYMLINK_DIR="/usr/bin"
 
 function uninstall(){
     # Ignore errors to uninstall as much as posssible
@@ -15,7 +15,8 @@ function uninstall(){
     # rmfakecloudctl handles all the good stuff
     ${DESTINATION}/rmfakecloudctl disable
 
-    rm -v $RMFAKECLOUDCTL_SYMLINK
+    rm -v $SYMLINK_DIR/rmfakecloudctl
+    rm -v $SYMLINK_DIR/rmfakecloud-multiproxy
     rm -v /etc/systemd/system/${UNIT_NAME}.service
     rm -v -rf $DESTINATION
     set -e
@@ -31,9 +32,11 @@ function doinstall(){
     tail -n+${ARCHIVE} "${0}" | gunzip | tar x -C ${DESTINATION} -vf -
     chmod +x ${DESTINATION}/rmfakecloud-multiproxy ${DESTINATION}/rmfakecloudctl
 
-    # Create symlink
-    rm -vf $RMFAKECLOUDCTL_SYMLINK
-    ln -vs "${DESTINATION}/rmfakecloudctl" "$RMFAKECLOUDCTL_SYMLINK"
+    # Create symlinks
+    rm -vf $SYMLINK_DIR/rmfakecloudctl
+    rm -vf $SYMLINK_DIR/rmfakecloud-multiproxy
+    ln -vs "${DESTINATION}/rmfakecloudctl" "$SYMLINK_DIR/rmfakecloudctl"
+    ln -vs "${DESTINATION}/rmfakecloud-multiproxy" "$SYMLINK_DIR/rmfakecloud-multiproxy"
 
     # Change the ExecStart path
     sed -i 's/^ExecStart=\/opt\/bin/ExecStart=\/home\/root\/rmfakecloud/' ${DESTINATION}/rmfakecloud-multiproxy.service
