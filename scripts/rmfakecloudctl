@@ -107,47 +107,100 @@ mark-disabled() {
     rm -f "$conf_dir/enabled"
 }
 
-# Read the currently configured upstream server
-#
-# Output: Name of the configured server
-# Exit code:
-#
-# 0 - If a server is configured
-# 1 - If no server is configured
-get-upstream() {
-    local upstream
-    # shellcheck disable=SC2016
-    local awk_program='
-        /^upstream:/{
-            sep = index($0, ":");
-            print gensub(/^[ \t]+|[ \t]+$/, "", "g", substr($0, sep + 1));
-        }
-    '
 
-    if ! upstream="$(awk "$awk_program" "$conf_dir/config" 2> /dev/null)"; then
-        return 1
-    fi
-
-    if [[ -z $upstream ]]; then
-        return 1
-    fi
-
-    echo "$upstream"
-}
-
-# Define the upstream server, overwriting any previously configured value
+# Set an option in the config file, overwriting what was there beforehand.
+# If no config file exists, the default is generated before the key is set.
 #
 # Arguments:
+#  $1 - Option key
+#  $2 - Value
 #
-# $1 - Name of the server
-set-upstream() {
-    mkdir -p "$conf_dir"
-    cat > "$conf_dir/config" << YAML
-cert: $data_dir/rmfakecloud-multiproxy.bundle.crt
-key: $data_dir/rmfakecloud-multiproxy.key
-upstream: $1
-addr: $proxy_listen:443
-YAML
+# Exit codes:
+#  0 - success
+#  1 - invalid key
+#  2 - invalid value
+#  3 - unsupported (but valid) value
+set-config() {
+    local key=$1
+    local value=$2
+    if [[ ! -e "$conf_dir/config" ]]; then
+        generate-default-config
+    fi
+
+    if ! rmfakecloud-multiproxy --docs | grep "^\w" | cut -f1 -d"=" | grep -Fxq "$key";
+    then
+        echo "$key: invalid key"
+        return 1
+    fi
+
+    if ! rmfakecloud-multiproxy --validate --ignore-required -C "$key=$value" 1>/dev/null;
+    then
+        return 2
+    fi
+
+    case "$key" in
+    *"|"*)
+        echo "Value '$value' contains the pipe character ('|') which is"
+        echo "unsupported by \`rmfakecloudctl\` for technical reasons."
+        echo "To set this value, please edit the config file directly."
+        echo "config: $conf_dir/config"
+        return 3
+    ;;
+    esac
+
+    echo "$key=$value"
+
+    # If key does not exist in the config file
+    if ! grep "^\w" "$conf_dir/config" | cut -f1 -d"=" | grep -Fxq "$key"; then
+        echo "$key=$value" >> "$conf_dir/config"
+    else
+        # These are the afformentioned technical reasons.
+        # Value cannot contain pipe
+        sed -i "/^$key/s|=.*$|=$value|" "$conf_dir/config"
+    fi
+}
+
+# Read the config
+#
+# Output: Value set for config
+#
+# Arguments:
+#  $1 - Key to read
+#
+# Exit code:
+#  0 - If a value is set and non-empty
+#  1 - If the value is not set, or is empty
+get-config() {
+    local key=$1
+    local value
+    if [[ ! -e "$conf_dir/config" ]]; then
+        return 1
+    fi
+
+    if ! value=$(grep "^$key=" "$conf_dir/config" | cut -f2 -d"="); then
+        return 1
+    fi
+
+    if [[ -z $value ]]; then
+        return 1
+    fi
+
+    echo "$value"
+}
+
+# Generate the default config
+generate-default-config() {
+    echo "Generating default config..."
+    if [[ -e "$conf_dir/config" ]]; then
+        cp -v "$conf_dir/config" "$conf_dir/config.bak"
+    fi
+
+    mkdir -vp "$conf_dir"
+    rmfakecloud-multiproxy --docs > "$conf_dir/config"
+
+    set-config "TLS_CERTIFICATE_FILE" "$data_dir/rmfakecloud-multiproxy.bundle.crt"
+    set-config "TLS_KEY_FILE" "$data_dir/rmfakecloud-multiproxy.key"
+    set-config "PROXY_LISTEN_ADDR" "$proxy_listen"
 }
 
 # Check if a given server is an rmfakecloud host
@@ -312,6 +365,9 @@ install() {
     disconnect-cloud
     install-certificates
     install-hosts
+    if [[ ! -e "$conf_dir/config" ]]; then
+        generate-default-config
+    fi
     mark-enabled
     systemctl enable rmfakecloud-multiproxy
     systemctl restart rmfakecloud-multiproxy
@@ -342,8 +398,9 @@ Manage rmfakecloud-multiproxy. Available commands:
     help                    Show this help message.
     status                  Check the current status of rmfakecloud-multiproxy.
     enable                  Enable rmfakecloud-multiproxy.
-    set-upstream            Set the upstream rmfakecloud server.
-    disable                 Disable rmfakecloud-multiproxy."
+    disable                 Disable rmfakecloud-multiproxy.
+    set-config KEY VAL      Set configuration KEY to VAL.
+    get-config [KEY]        Get all configuration, or just KEY."
 }
 
 if [[ $0 = "${BASH_SOURCE[0]}" ]]; then
@@ -369,7 +426,7 @@ if [[ $0 = "${BASH_SOURCE[0]}" ]]; then
             echo -e "Status: $state$reset ($service$reset)"
             echo -en "Upstream server: "
 
-            if ! upstream="$(get-upstream)"; then
+            if ! upstream="$(get-config "UPSTREAM_CLOUD_URL")"; then
                 echo -e "(${yellow}not set$reset)"
             else
                 echo -en "$upstream (checking status...)"
@@ -388,7 +445,7 @@ if [[ $0 = "${BASH_SOURCE[0]}" ]]; then
                 echo "Run \`rmfakecloudctl enable\` to enable rmfakecloud-multiproxy."
             fi
 
-            echo "Run \`rmfakecloudctl set-upstream https://<server>\` to set the upstream server."
+            echo "Run \`rmfakecloudctl set-config UPSTREAM_CLOUD_URL https://<server>\` to set the upstream server."
             ;;
 
         enable)
@@ -405,23 +462,44 @@ if [[ $0 = "${BASH_SOURCE[0]}" ]]; then
             echo "rmfakecloud-multiproxy is now disabled."
             ;;
 
-        set-upstream)
+        set-config)
             if (($# < 1)); then
-                echo "Missing server name argument"
+                echo "Missing config key argument"
+                exit 1
+            fi
+            if (($# < 2)); then
+                echo "Missing config value argument"
                 exit 1
             fi
 
-            if [[ $(get-upstream) == "$1" ]]; then
-                echo "Server already set to '$1'."
+            case $1 in
+
+            esac
+
+
+            if [[ $(get-config "$1") == "$2" ]]; then
+                echo "$1 already set to '$2'."
             else
                 disconnect-cloud
-                set-upstream "$1"
-                echo "Upstream server configuration changed successfully."
+                set-config "$1" "$2"
 
                 if is-enabled; then
                     systemctl restart rmfakecloud-multiproxy
                 fi
             fi
+            ;;
+
+        get-config)
+            if [[ $# -eq 0 ]]; then
+                echo "# config dump $(date)"
+                echo "# file: $conf_dir/config"
+                sed '/^#/d; /^\s*$/d' "$conf_dir/config"
+                exit 0
+            fi
+            if ! val=$(get-config "$1"); then
+                exit 1
+            fi
+            echo "$1=$val"
             ;;
 
         help | -h | --help)
