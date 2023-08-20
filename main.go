@@ -24,7 +24,7 @@ func _main() error {
 		return err
 	}
 
-	upstream, err := url.Parse(cfg.UpstreamCloudURL)
+	upstream, err := url.Parse(cfg.Get("UPSTREAM_CLOUD_URL"))
 	if err != nil {
 		return fmt.Errorf("invalid upstream address: %v", err)
 	}
@@ -77,7 +77,7 @@ func _main() error {
 				return nil
 			},
 		},
-		Addr: cfg.ProxyListenAddr + ":443",
+		Addr: cfg.Get("PROXY_LISTEN_ADDR") + ":443",
 	}
 
 	done := make(chan struct{})
@@ -92,8 +92,8 @@ func _main() error {
 		close(done)
 	}()
 
-	log.Printf("cert-file=%s key-file=%s listen-addr=%s upstream-url=%s", cfg.TLSCertificateFile, cfg.TLSKeyFile, srv.Addr, upstream.String())
-	if err := srv.ListenAndServeTLS(cfg.TLSCertificateFile, cfg.TLSKeyFile); err != http.ErrServerClosed {
+	log.Printf("cert-file=%s key-file=%s listen-addr=%s upstream-url=%s", cfg.Get("TLS_CERTIFICATE_FILE"), cfg.Get("TLS_KEY_FILE"), srv.Addr, upstream.String())
+	if err := srv.ListenAndServeTLS(cfg.Get("TLS_CERTIFICATE_FILE"), cfg.Get("TLS_KEY_FILE")); err != http.ErrServerClosed {
 		return fmt.Errorf("ListenAndServeTLS: %v", err)
 	}
 
