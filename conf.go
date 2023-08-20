@@ -42,9 +42,9 @@ func (cfg *ConfigFile) Validate(ignoreRequired bool) (string, bool) {
 			if !cfg.IsSet(key) {
 				isValid = false
 				if errors == "" {
-					errors += "cfg: All of the following must be set:\n"
+					errors += "All of the following must be set:\n"
 				}
-				errors += "cfg:   " + key + "\n"
+				errors += "  " + key + "\n"
 			}
 		}
 
@@ -57,9 +57,9 @@ func (cfg *ConfigFile) Validate(ignoreRequired bool) (string, bool) {
 
 		if !has_mode {
 			isValid = false
-			errors += "cfg: One of the following must be set:\n"
+			errors += "One of the following must be set:\n"
 			for _, key := range mode_keys {
-				errors += "cfg:   " + key + "\n"
+				errors += "  " + key + "\n"
 			}
 		}
 	}
@@ -71,28 +71,28 @@ func (cfg *ConfigFile) Validate(ignoreRequired bool) (string, bool) {
 		case validateBool:
 			if val != "true" && val != "false" {
 				isValid = false
-				errors += "cfg: " + key + " must be either 'true' or 'false'\n"
-				errors += "cfg:   Current value: '" + val + "'\n"
+				errors += key + " must be either 'true' or 'false'\n"
+				errors += "  Current value: '" + val + "'\n"
 			}
 		case validateURL:
 			_, err := url.Parse(val)
 			if err != nil {
 				isValid = false
-				errors += "cfg: " + key + " has an invalid URL\n"
-				errors += "cfg:   " + fmt.Sprintf("%v", err) + "\n"
+				errors += key + " has an invalid URL\n"
+				errors += "  " + fmt.Sprintf("%v", err) + "\n"
 			}
 		case validateString:
 			// No validation needed
 		case validateUnset:
 			isValid = false
-			errors += "cfg: " + key + " has no validation type\n"
-			errors += "cfg:   This can only be fixed by a new release\n"
-			errors += "cfg:   Please create an issue about this on on github\n"
+			errors += key + " has no validation type\n"
+			errors += "  This can only be fixed by a new release\n"
+			errors += "  Please create an issue about this on on github\n"
 		default:
 			isValid = false
-			errors += "cfg: " + key + " has unknown validation type\n"
-			errors += "cfg:   This can only be fixed by a new release\n"
-			errors += "cfg:   Please create an issue about this on on github\n"
+			errors += key + " has unknown validation type\n"
+			errors += "  This can only be fixed by a new release\n"
+			errors += "  Please create an issue about this on on github\n"
 		}
 	}
 
@@ -100,14 +100,10 @@ func (cfg *ConfigFile) Validate(ignoreRequired bool) (string, bool) {
 		_, exists := validOptions[key]
 		if !exists {
 			isValid = false
-			errors += "cfg: " + key + ": unknown option\n"
+			errors += key + ": unknown option\n"
 		}
 	}
 
-	if !isValid {
-		errors += "cfg:\n"
-		errors += "cfg: See `rmfakecloud-multiproxy --docs` for config documentation\n"
-	}
 	return errors, isValid
 }
 
@@ -123,9 +119,6 @@ func (cfg *ConfigFile) IsSet(key string) bool {
 
 	opt, exists := validOptions[key]
 	if !exists {
-		// how did that happen?
-		// I guess its technically set.
-		// But its certainly not valid!
 		return true
 	}
 
