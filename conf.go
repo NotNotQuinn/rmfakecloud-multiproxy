@@ -381,7 +381,7 @@ func getConfig() (config *ConfigFile, err error) {
 			fmt.Fprintln(os.Stderr, "Config validation failed")
 			os.Exit(1)
 		} else {
-			fmt.Fprintln(os.Stderr, "Config validation passed")
+			fmt.Fprintln(os.Stdout, "Config validation passed")
 			os.Exit(0)
 		}
 	}
