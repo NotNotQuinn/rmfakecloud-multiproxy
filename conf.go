@@ -312,10 +312,7 @@ func genDocs() string {
 	doc := "# rmfakecloud-multiproxy config documentation\n"
 	doc += "# Run `rmfakecloud-multiproxy --docs` to generate this file.\n"
 	doc += "# These docs also happen to be a valid config file that\n"
-	doc += "# includes all options with default values.\n"
-	doc += "\n"
-	doc += "# No code expects the config to have these comments in it, you\n"
-	doc += "# may delete them freely. They won't be regenerated.\n"
+	doc += "# includes all options for rmfakecloud-multiproxy " + Version_Number + "\n"
 	doc += "\n"
 	doc += "# Note: Most of the time, `rmfakecloudctl` will generate\n"
 	doc += "# and populate the required fields for you after generating\n"
@@ -381,7 +378,7 @@ func getConfig() (config *ConfigFile, err error) {
 		os.Exit(0)
 	}
 	if getVersion {
-		fmt.Fprintln(os.Stdout, Version)
+		fmt.Fprintln(os.Stdout, Version_Full)
 		os.Exit(0)
 	}
 	if getDocs {
