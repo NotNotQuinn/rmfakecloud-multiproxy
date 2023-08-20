@@ -12,10 +12,10 @@ SYMLINK_DIR="/usr/bin"
 function uninstall(){
     # Ignore errors to uninstall as much as posssible
     set +e
-    # rmfakecloudctl handles all the good stuff
-    ${DESTINATION}/rmfakecloudctl disable
+    # multiproxyctl handles all the good stuff
+    ${DESTINATION}/multiproxyctl disable
 
-    rm -v $SYMLINK_DIR/rmfakecloudctl
+    rm -v $SYMLINK_DIR/multiproxyctl
     rm -v $SYMLINK_DIR/rmfakecloud-multiproxy
     rm -v /etc/systemd/system/${UNIT_NAME}.service
     rm -v -rf $DESTINATION
@@ -30,12 +30,12 @@ function doinstall(){
     # Find __ARCHIVE__ maker, read archive content and decompress it
     ARCHIVE=$(awk '/^__ARCHIVE__/ {print NR + 1; exit 0; }' "${0}")
     tail -n+${ARCHIVE} "${0}" | gunzip | tar x -C ${DESTINATION} -vf -
-    chmod +x ${DESTINATION}/rmfakecloud-multiproxy ${DESTINATION}/rmfakecloudctl
+    chmod +x ${DESTINATION}/rmfakecloud-multiproxy ${DESTINATION}/multiproxyctl
 
     # Create symlinks
-    rm -vf $SYMLINK_DIR/rmfakecloudctl
+    rm -vf $SYMLINK_DIR/multiproxyctl
     rm -vf $SYMLINK_DIR/rmfakecloud-multiproxy
-    ln -vs "${DESTINATION}/rmfakecloudctl" "$SYMLINK_DIR/rmfakecloudctl"
+    ln -vs "${DESTINATION}/multiproxyctl" "$SYMLINK_DIR/multiproxyctl"
     ln -vs "${DESTINATION}/rmfakecloud-multiproxy" "$SYMLINK_DIR/rmfakecloud-multiproxy"
 
     # Change the ExecStart path
@@ -43,8 +43,8 @@ function doinstall(){
     cp ${DESTINATION}/rmfakecloud-multiproxy.service /etc/systemd/system/${UNIT_NAME}.service
     systemctl daemon-reload
 
-    echo "==== Running \`rmfakecloudctl status\`..."
-    ${DESTINATION}/rmfakecloudctl status
+    echo "==== Running \`multiproxyctl status\`..."
+    ${DESTINATION}/multiproxyctl status
 }
 
 
@@ -66,11 +66,11 @@ Usage:
 
 install
     install rmFakeCloud multiproxy
-    Use \`rmfakecloudctl enable\` to enable
+    Use \`multiproxyctl enable\` to enable
 
 uninstall
     disable, uninstall, removes everything created by the installer
-    Does not remove configs created by \`rmfakecloudctl\`
+    Does not remove configs created by \`multiproxyctl\`
 EOF
         ;;
 

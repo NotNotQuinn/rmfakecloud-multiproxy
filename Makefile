@@ -18,9 +18,9 @@ $(WINBINARY): version.go $(GOSRCFILES)
 version.go: generate/versioninfo.go .FORCE
 	go generate
 
-$(INSTALLER): $(BINARY) scripts/installer.sh scripts/rmfakecloud-multiproxy.service scripts/rmfakecloudctl
+$(INSTALLER): $(BINARY) scripts/installer.sh scripts/rmfakecloud-multiproxy.service scripts/multiproxyctl
 	cp scripts/installer.sh $@
-	tar -czvO -C dist `basename $(BINARY)` -C ../scripts rmfakecloud-multiproxy.service rmfakecloudctl >> $@
+	tar -czvO -C dist `basename $(BINARY)` -C ../scripts rmfakecloud-multiproxy.service multiproxyctl >> $@
 	chmod +x $@
 clean:
 	rm -fr dist

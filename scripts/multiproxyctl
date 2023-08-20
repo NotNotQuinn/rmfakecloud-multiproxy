@@ -141,7 +141,7 @@ set-config() {
     case "$key" in
     *"|"*)
         echo "Value '$value' contains the pipe character ('|') which is"
-        echo "unsupported by \`rmfakecloudctl\` for technical reasons."
+        echo "unsupported by \`multiproxyctl\` for technical reasons."
         echo "To set this value, please edit the config file directly."
         echo "config: $conf_dir/config"
         return 3
@@ -440,12 +440,12 @@ if [[ $0 = "${BASH_SOURCE[0]}" ]]; then
             fi
 
             if is-enabled; then
-                echo "Run \`rmfakecloudctl disable\` to disable rmfakecloud-multiproxy."
+                echo "Run \`multiproxyctl disable\` to disable rmfakecloud-multiproxy."
             else
-                echo "Run \`rmfakecloudctl enable\` to enable rmfakecloud-multiproxy."
+                echo "Run \`multiproxyctl enable\` to enable rmfakecloud-multiproxy."
             fi
 
-            echo "Run \`rmfakecloudctl set-config UPSTREAM_CLOUD_URL https://<server>\` to set the upstream server."
+            echo "Run \`multiproxyctl set-config UPSTREAM_CLOUD_URL https://<server>\` to set the upstream server."
             ;;
 
         enable)
