@@ -6,7 +6,7 @@
 set -e
 
 UNIT_NAME=rmfakecloud-multiproxy
-DESTINATION="/home/root/rmfakecloud"
+DESTINATION="/home/root/rmfakecloud-multiproxy"
 SYMLINK_DIR="/usr/bin"
 
 function uninstall(){
