@@ -126,7 +126,7 @@ func (cfg *ConfigFile) IsSet(key string) bool {
 		// how did that happen?
 		// I guess its technically set.
 		// But its certainly not valid!
-		return false
+		return true
 	}
 
 	switch opt.Validation {
@@ -250,8 +250,9 @@ func newConfig() ConfigFile {
 }
 
 func printCliUsage() {
-	usage := "usage: %[1]s [--validate] [--ignore-required] [-c config] [-C OPTION=VALUE]...\n"
+	usage := "usage: %[1]s [-c config] [-C OPTION=VALUE]...\n"
 	usage += "       %[1]s [-h] [-v] [--help] [--version] [--docs]\n"
+	usage += "       %[1]s [--validate [--ignore-required]] [-c ...] [-C ...]\n"
 	usage += "  -C OPTION=VALUE\n"
 	usage += "        Explicitly set OPTION=VALUE\n"
 	usage += "        Usable multiple times\n"
