@@ -21,42 +21,46 @@ func (cfg *ConfigFile) Set(key string, value string) {
 
 // Returns multi-line error messages as string
 // and if the config is valid.
-func (cfg *ConfigFile) Validate() (string, bool) {
+func (cfg *ConfigFile) Validate(ignoreRequired bool) (string, bool) {
 	errors := ""
 	isValid := true
-	required_keys := []string{
-		"PROXY_LISTEN_ADDR",
-		"TLS_CERTIFICATE_FILE",
-		"TLS_KEY_FILE",
-	}
-	mode_keys := []string{
-		"UPSTREAM_CLOUD_URL",
-		"USE_OFFICIAL_CLOUD",
-	}
 
-	// Check required keys
-	for _, key := range required_keys {
-		if !cfg.IsSet(key) {
-			isValid = false
-			if errors == "" {
-				errors += "cfg: All of the following must be set:\n"
+	if !ignoreRequired {
+		// Check for required keys
+		required_keys := []string{
+			"PROXY_LISTEN_ADDR",
+			"TLS_CERTIFICATE_FILE",
+			"TLS_KEY_FILE",
+		}
+		mode_keys := []string{
+			"UPSTREAM_CLOUD_URL",
+			"USE_OFFICIAL_CLOUD",
+		}
+
+		// Check required keys
+		for _, key := range required_keys {
+			if !cfg.IsSet(key) {
+				isValid = false
+				if errors == "" {
+					errors += "cfg: All of the following must be set:\n"
+				}
+				errors += "cfg:   " + key + "\n"
 			}
-			errors += "cfg:   " + key + "\n"
 		}
-	}
 
-	has_mode := false
-	for _, key := range mode_keys {
-		if cfg.IsSet(key) {
-			has_mode = true
-		}
-	}
-
-	if !has_mode {
-		isValid = false
-		errors += "cfg: One of the following must be set:\n"
+		has_mode := false
 		for _, key := range mode_keys {
-			errors += "cfg:   " + key + "\n"
+			if cfg.IsSet(key) {
+				has_mode = true
+			}
+		}
+
+		if !has_mode {
+			isValid = false
+			errors += "cfg: One of the following must be set:\n"
+			for _, key := range mode_keys {
+				errors += "cfg:   " + key + "\n"
+			}
 		}
 	}
 
@@ -77,7 +81,6 @@ func (cfg *ConfigFile) Validate() (string, bool) {
 				errors += "cfg: " + key + " has an invalid URL\n"
 				errors += "cfg:   " + fmt.Sprintf("%v", err) + "\n"
 			}
-
 		case validateString:
 			// No validation needed
 		case validateUnset:
@@ -247,13 +250,16 @@ func newConfig() ConfigFile {
 }
 
 func printCliUsage() {
-	usage := "usage: %[1]s [--validate] [-c config] [-C OPTION=VALUE]...\n"
+	usage := "usage: %[1]s [--validate] [--ignore-required] [-c config] [-C OPTION=VALUE]...\n"
 	usage += "       %[1]s [-h] [-v] [--help] [--version] [--docs]\n"
 	usage += "  -C OPTION=VALUE\n"
 	usage += "        Explicitly set OPTION=VALUE\n"
 	usage += "        Usable multiple times\n"
 	usage += "  -c config\n"
 	usage += "        Load options from config file\n"
+	usage += "  --ignore-required\n"
+	usage += "        Do not fail validation when required options are unset\n"
+	usage += "        Fails without --validate\n"
 	usage += "\n"
 	usage += "Early-exit options:\n"
 	usage += "  --validate\n"
@@ -310,6 +316,7 @@ func getConfig() (config *ConfigFile, err error) {
 		getUsage       bool
 		getVersion     bool
 		validateConfig bool
+		ignoreRequired bool
 		explicitConfig []string
 	)
 
@@ -323,6 +330,7 @@ func getConfig() (config *ConfigFile, err error) {
 	flag.StringVar(&configFile, "c", "", "")
 	flag.BoolVar(&getDocs, "docs", false, "")
 	flag.BoolVar(&validateConfig, "validate", false, "")
+	flag.BoolVar(&ignoreRequired, "ignore-required", false, "")
 	flag.BoolVar(&getVersion, "v", false, "")
 	flag.BoolVar(&getVersion, "version", false, "")
 	flag.BoolVar(&getUsage, "h", false, "")
@@ -367,17 +375,23 @@ func getConfig() (config *ConfigFile, err error) {
 	}
 
 	if validateConfig {
-		if errors, isValid := cfg.Validate(); !isValid {
-			errors += "Validation failed\n"
+		if errors, isValid := cfg.Validate(ignoreRequired); !isValid {
 			fmt.Fprint(os.Stderr, errors)
+			fmt.Fprintln(os.Stderr, "Config validation failed")
 			os.Exit(1)
 		} else {
-			fmt.Fprint(os.Stderr, "Validation passed\n")
+			fmt.Fprintln(os.Stderr, "Config validation passed")
 			os.Exit(0)
 		}
 	}
 
-	if errors, isValid := cfg.Validate(); !isValid {
+	if ignoreRequired && !validateConfig {
+		fmt.Fprintln(os.Stderr, "FATAL: --ignore-required used without --validate")
+		os.Exit(1)
+	}
+
+	if errors, isValid := cfg.Validate(false); !isValid {
+		errors += "FATAL: configuration validation failed\n"
 		fmt.Fprint(os.Stderr, errors)
 		os.Exit(1)
 	}
