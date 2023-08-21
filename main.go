@@ -5,9 +5,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -15,6 +18,9 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
+
+	"github.com/notnotquinn/rmfakecloud-multiproxy/intercept/network"
 )
 
 // To be called in Rewrite()
@@ -63,6 +69,33 @@ func Rewrite(cfg *ConfigFile, req *httputil.ProxyRequest) {
 }
 
 func ModifyResponse(cfg *ConfigFile, r *http.Response) error {
+	operation := r.Header.Get("X-Envoy-Decorator-Operation")
+	if operation == "ingress GetIntegrations" {
+		fmt.Println()
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			return fmt.Errorf("unable to read response body: %w", err)
+		}
+		var parsedResp network.GetIntegrationsResp
+		if err := json.Unmarshal(body, &parsedResp); err != nil {
+			return fmt.Errorf("unable to unmarshal: %w", err)
+		}
+		parsedResp.Integrations = append(parsedResp.Integrations, network.Integration{
+			ID:         "onepiece",
+			UserID:     "guest",
+			Name:       "One Piece",
+			Added:      time.Now(),
+			ProviderID: "vint:onepiece",
+			Issues:     []any{},
+		})
+		encodedResp, err := json.Marshal(parsedResp)
+		if err != nil {
+			return fmt.Errorf("unable to marshal: %w", err)
+		}
+		r.Body = io.NopCloser(bytes.NewReader(encodedResp))
+		r.Header.Set("Content-Length", fmt.Sprint(len(encodedResp)))
+		r.ContentLength = int64(len(encodedResp))
+	}
 	if cfg.IsSet("LOG_HTTP_REQUESTS") {
 		logHTTP_in_ModifyResponse(r)
 	}
