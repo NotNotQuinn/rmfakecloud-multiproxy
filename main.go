@@ -17,6 +17,58 @@ import (
 	"syscall"
 )
 
+// To be called in Rewrite()
+func logHTTP_in_Rewrite(domain string, req *httputil.ProxyRequest) {
+	requested_url := fmt.Sprintf("%s https://%s%s", req.In.Method, domain, req.In.URL)
+	request_content, err := httputil.DumpRequest(req.Out, true)
+	if err != nil {
+		fmt.Printf("error dumping request %q: %v\n", requested_url, err)
+		return
+	}
+
+	// Save this information to print later, because of async printing/buffer issues.
+	req.Out = req.Out.WithContext(context.WithValue(
+		context.Background(),
+		httpLog{},
+		fmt.Sprintf("%s\n%s", requested_url, request_content),
+	))
+}
+
+func logHTTP_in_ModifyResponse(r *http.Response) {
+	request_content := r.Request.Context().Value(httpLog{}).(string)
+	response_content, err := httputil.DumpResponse(r, true)
+	// All in one print statement to avoid async printing issues with many requests.
+	if err != nil {
+		fmt.Printf("===== Round Trip: %s\n===\nerror dumping response: %s\n===\n", request_content, err)
+	} else {
+		fmt.Printf("===== Round Trip: %s\n===\n%s\n===\n", request_content, response_content)
+	}
+}
+
+func Rewrite(cfg *ConfigFile, req *httputil.ProxyRequest) {
+	// :443 is sometimes appended in 2.15? Never seen it on 3.5.2
+	domain := strings.TrimSuffix(req.In.Host, ":443")
+	if cfg.IsSet("LOG_HTTP_REQUESTS") {
+		logHTTP_in_Rewrite(domain, req)
+	}
+
+	req.Out.URL.Scheme = "https"
+	ip, err := resolve_host(domain)
+	if err != nil {
+		fmt.Println(err)
+		fmt.Printf("Unable to resolve host %q\n", domain)
+		return
+	}
+	req.Out.URL.Host = fmt.Sprint(ip)
+}
+
+func ModifyResponse(cfg *ConfigFile, r *http.Response) error {
+	if cfg.IsSet("LOG_HTTP_REQUESTS") {
+		logHTTP_in_ModifyResponse(r)
+	}
+	return nil
+}
+
 // A context key to store a formatted string of an HTTP request.
 type httpLog struct{}
 
@@ -31,38 +83,10 @@ func _main() error {
 		return fmt.Errorf("invalid upstream address: %v", err)
 	}
 
-	logHTTP := cfg.IsSet("LOG_HTTP_REQUESTS")
-	// useOfficialCloud := cfg.IsSet("USE_OFFICIAL_CLOUD")
-
 	srv := http.Server{
 		Handler: &httputil.ReverseProxy{
 			Rewrite: func(req *httputil.ProxyRequest) {
-				// :443 is sometimes appended in 2.15? Never seen it on 3.5.2
-				domain := strings.TrimSuffix(req.In.Host, ":443")
-				if logHTTP {
-					requested_url := fmt.Sprintf("%s https://%s%s", req.In.Method, domain, req.In.URL)
-					request_content, err := httputil.DumpRequest(req.Out, true)
-					if err != nil {
-						fmt.Printf("error dumping request %q: %v\n", requested_url, err)
-						return
-					}
-
-					// Save this information to print later, because of async printing/buffer issues.
-					req.Out = req.Out.WithContext(context.WithValue(
-						context.Background(),
-						httpLog{},
-						fmt.Sprintf("%s\n%s", requested_url, request_content),
-					))
-				}
-
-				req.Out.URL.Scheme = "https"
-				ip, err := resolve_host(domain)
-				if err != nil {
-					fmt.Println(err)
-					fmt.Printf("Unable to resolve host %q\n", domain)
-					return
-				}
-				req.Out.URL.Host = fmt.Sprint(ip)
+				Rewrite(cfg, req)
 			},
 			// Ignore TLS verify, because we are accessing by IP address
 			// remarkable's certs don't include ip records. """impossible""" to verify.
@@ -72,18 +96,7 @@ func _main() error {
 				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 			},
 			ModifyResponse: func(r *http.Response) error {
-				if logHTTP {
-					request_content := r.Request.Context().Value(httpLog{}).(string)
-					response_content, err := httputil.DumpResponse(r, true)
-					// All in one print statement to avoid async printing issues with many requests.
-					if err != nil {
-						fmt.Printf("===== Round Trip: %s\n===\nerror dumping response: %s\n===\n", request_content, err)
-						return err
-					} else {
-						fmt.Printf("===== Round Trip: %s\n===\n%s\n===\n", request_content, response_content)
-					}
-				}
-				return nil
+				return ModifyResponse(cfg, r)
 			},
 		},
 		Addr: cfg.Get("PROXY_LISTEN_ADDR") + ":443",
@@ -108,6 +121,16 @@ func _main() error {
 	fmt.Printf("Configuration:\n")
 	fmt.Printf("  srv.Addr: %v\n", srv.Addr)
 	fmt.Printf("  upstream.String(): %v\n", upstream.String())
+
+	fmt.Printf("Active modes:\n")
+	if cfg.IsSet("USE_OFFICIAL_CLOUD") {
+		fmt.Printf("  upstream = <official cloud>\n")
+	} else {
+		fmt.Printf("  upstream = %s\n", cfg.Get("UPSTREAM_CLOUD_URL"))
+	}
+	if cfg.IsSet("LOG_HTTP_REQUESTS") {
+		fmt.Printf("  Log HTTP Requests\n")
+	}
 
 	certFile := cfg.Get("TLS_CERTIFICATE_FILE")
 	keyFile := cfg.Get("TLS_KEY_FILE")
