@@ -47,7 +47,7 @@ func resolve_host(domain string) (*net.IP, error) {
 			ip:      A_record.A,
 		}
 
-		fmt.Printf("DNS: %q: %s (ttl %v)", domain, A_record.A, ttl)
+		fmt.Printf("DNS: %q: %s (ttl %v)\n", domain, A_record.A, ttl)
 		return &A_record.A, nil
 	}
 
