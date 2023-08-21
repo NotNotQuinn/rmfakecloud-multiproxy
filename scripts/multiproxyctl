@@ -375,8 +375,8 @@ install() {
     fi
     validate-config
     mark-enabled
-    systemctl enable rmfakecloud-multiproxy
-    systemctl restart rmfakecloud-multiproxy
+    systemctl enable multiproxy.service
+    systemctl restart multiproxy.service
     trap EXIT
 }
 
@@ -391,7 +391,7 @@ uninstall() {
     set +e
     disconnect-cloud
     mark-disabled
-    systemctl disable --now rmfakecloud-multiproxy
+    systemctl disable --now multiproxy.service
     uninstall-hosts
     uninstall-certificates
     set -e
@@ -448,7 +448,7 @@ if [[ $0 = "${BASH_SOURCE[0]}" ]]; then
     case $action in
         status)
             is-enabled && state="${green}enabled" || state="${red}disabled"
-            service="$(systemctl is-active rmfakecloud-multiproxy.service)" || true
+            service="$(systemctl is-active multiproxy.service)" || true
 
             if [[ $service = active ]]; then
                 service="$green$service"
@@ -515,7 +515,7 @@ if [[ $0 = "${BASH_SOURCE[0]}" ]]; then
                 set-config "$key" "$2"
 
                 if is-enabled; then
-                    systemctl restart rmfakecloud-multiproxy
+                    systemctl restart multiproxy.service
                 fi
             fi
             ;;

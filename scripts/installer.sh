@@ -5,7 +5,6 @@
 # -- Imagine loading a docker image for your developement build
 set -e
 
-UNIT_NAME=rmfakecloud-multiproxy
 DESTINATION="/home/root/rmfakecloud-multiproxy"
 SYMLINK_DIR="/usr/bin"
 
@@ -17,7 +16,7 @@ function uninstall(){
 
     rm -v $SYMLINK_DIR/multiproxyctl
     rm -v $SYMLINK_DIR/rmfakecloud-multiproxy
-    rm -v /etc/systemd/system/${UNIT_NAME}.service
+    rm -v /etc/systemd/system/multiproxy.service
     rm -v -rf $DESTINATION
     set -e
 }
@@ -39,8 +38,8 @@ function doinstall(){
     ln -vs "${DESTINATION}/rmfakecloud-multiproxy" "$SYMLINK_DIR/rmfakecloud-multiproxy"
 
     # Change the ExecStart path
-    sed -i 's/^ExecStart=\/opt\/bin/ExecStart=\/home\/root\/rmfakecloud-multiproxy/' ${DESTINATION}/rmfakecloud-multiproxy.service
-    cp ${DESTINATION}/rmfakecloud-multiproxy.service /etc/systemd/system/${UNIT_NAME}.service
+    sed -i 's/^ExecStart=\/opt\/bin/ExecStart=\/home\/root\/rmfakecloud-multiproxy/' ${DESTINATION}/multiproxy.service
+    cp ${DESTINATION}/multiproxy.service /etc/systemd/system/multiproxy.service
     systemctl daemon-reload
 
     echo "==== Running \`multiproxyctl status\`..."
