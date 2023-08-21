@@ -121,8 +121,6 @@ func _main() error {
 }
 
 func main() {
-
-	messages
 	err := _main()
 	if err != nil {
 		fmt.Println(err)
