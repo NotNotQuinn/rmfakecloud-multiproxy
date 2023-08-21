@@ -411,7 +411,7 @@ func getConfig() (config *ConfigFile, err error) {
 	if validateConfig {
 		if errors, isValid := cfg.Validate(ignoreRequired); !isValid {
 			fmt.Fprint(os.Stderr, errors)
-			fmt.Fprintln(os.Stderr, "Config validation failed")
+			fmt.Fprintln(os.Stderr, "ERROR: Config validation failed")
 			os.Exit(1)
 		} else {
 			fmt.Fprintln(os.Stdout, "Config validation passed")
