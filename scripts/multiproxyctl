@@ -504,11 +504,9 @@ if [[ $0 = "${BASH_SOURCE[0]}" ]]; then
                 echo "Missing config value argument"
                 exit 1
             fi
-            key=$(resolve-config-shorthand $1)
-            val=$(get-config "$key")
-            code=$?
 
-            if [[ "$val" == "$2" ]]; then
+            key=$(resolve-config-shorthand $1)
+            if [[ "$(get-config "$key")" == "$2" ]]; then
                 echo "$key already set to '$2'."
             else
                 disconnect-cloud
