@@ -224,6 +224,8 @@ var validOptions = []configOption{
 		Documentation: []string{
 			"Logs network requests and responses.",
 			"Works for rmfakecloud instances and the official cloud.",
+			"Intended mostly for developers, not recommended to keep",
+			"on all the time. `journalctl -u multiproxy -f` to view logs.",
 			"Boolean `true` or `false`",
 		},
 	},
