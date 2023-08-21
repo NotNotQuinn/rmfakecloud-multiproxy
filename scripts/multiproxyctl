@@ -366,14 +366,16 @@ uninstall-hosts() {
 
 # Try to make a full install of rmfakecloud-multiproxy
 install() {
-    trap install-failed EXIT
-    disconnect-cloud
-    install-certificates
-    install-hosts
+    # Generate and validate config first
     if [[ ! -e "$conf_dir/config" ]]; then
         generate-default-config
     fi
     validate-config
+    # Start install process
+    trap install-failed EXIT
+    disconnect-cloud
+    install-certificates
+    install-hosts
     mark-enabled
     systemctl enable multiproxy.service
     systemctl restart multiproxy.service
