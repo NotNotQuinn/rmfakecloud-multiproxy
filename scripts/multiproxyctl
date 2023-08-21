@@ -88,6 +88,15 @@ disconnect-cloud() {
     fi
 }
 
+# Validate the config is correct.
+#
+# Exit code:
+#  0 - config is valid
+#  1 - config is not valid
+validate-config() {
+    rmfakecloud-multiproxy --validate -c "$conf_dir/config"
+}
+
 # Check if the proxy has been enabled
 #
 # Exit code:
@@ -95,7 +104,7 @@ disconnect-cloud() {
 # 0 - If the proxy is enabled
 # Other - If the proxy is disabled
 is-enabled() {
-    [[ -f $conf_dir/enabled ]]
+    [[ -f "$conf_dir/enabled" ]]
 }
 
 mark-enabled() {
@@ -107,9 +116,9 @@ mark-disabled() {
     rm -f "$conf_dir/enabled"
 }
 
-
 # Set an option in the config file, overwriting what was there beforehand.
 # If no config file exists, the default is generated before the key is set.
+# Does not handle shorthands.
 #
 # Arguments:
 #  $1 - Option key
@@ -160,7 +169,7 @@ set-config() {
     fi
 }
 
-# Read the config
+# Read the config. Does not handle shorthands.
 #
 # Output: Value set for config
 #
@@ -168,8 +177,8 @@ set-config() {
 #  $1 - Key to read
 #
 # Exit code:
-#  0 - If a value is set and non-empty
-#  1 - If the value is not set, or is empty
+#  0 - If the key is set (even if empty)
+#  1 - If the key is not set
 get-config() {
     local key=$1
     local value
@@ -178,10 +187,6 @@ get-config() {
     fi
 
     if ! value=$(grep "^$key=" "$conf_dir/config" | cut -f2 -d"="); then
-        return 1
-    fi
-
-    if [[ -z $value ]]; then
         return 1
     fi
 
@@ -368,6 +373,7 @@ install() {
     if [[ ! -e "$conf_dir/config" ]]; then
         generate-default-config
     fi
+    validate-config
     mark-enabled
     systemctl enable rmfakecloud-multiproxy
     systemctl restart rmfakecloud-multiproxy
@@ -400,7 +406,34 @@ Manage rmfakecloud-multiproxy. Available commands:
     enable                  Enable rmfakecloud-multiproxy.
     disable                 Disable rmfakecloud-multiproxy.
     set-config KEY VAL      Set configuration KEY to VAL.
-    get-config [KEY]        Get all configuration, or just KEY."
+    get-config [KEY]        Get all configuration, or just KEY.
+    validate                Validate the config has no errors.
+
+To view all config keys with documentation:
+
+    rmfakecloud-multiproxy --docs
+
+Some keys have shorthands:
+
+    upstream                UPSTREAM_CLOUD_URL      (string)
+    log                     LOG_HTTP_REQUESTS       (bool)
+    passthrough             USE_OFFICIAL_CLOUD      (bool)"
+}
+
+resolve-config-shorthand() {
+    case $1 in
+    "upstream")
+        echo "UPSTREAM_CLOUD_URL"
+        ;;
+    "log")
+        echo "LOG_HTTP_REQUESTS"
+        ;;
+    "passthrough")
+        echo "USE_OFFICIAL_CLOUD"
+        ;;
+    *)
+        echo $1;
+    esac
 }
 
 if [[ $0 = "${BASH_SOURCE[0]}" ]]; then
@@ -445,7 +478,7 @@ if [[ $0 = "${BASH_SOURCE[0]}" ]]; then
                 echo "Run \`multiproxyctl enable\` to enable rmfakecloud-multiproxy."
             fi
 
-            echo "Run \`multiproxyctl set-config UPSTREAM_CLOUD_URL https://<server>\` to set the upstream server."
+            echo "Run \`multiproxyctl set-config upstream https://<server>\` to set the upstream server."
             ;;
 
         enable)
@@ -471,17 +504,15 @@ if [[ $0 = "${BASH_SOURCE[0]}" ]]; then
                 echo "Missing config value argument"
                 exit 1
             fi
+            key=$(resolve-config-shorthand $1)
+            val=$(get-config "$key")
+            code=$?
 
-            case $1 in
-
-            esac
-
-
-            if [[ $(get-config "$1") == "$2" ]]; then
-                echo "$1 already set to '$2'."
+            if [[ "$val" == "$2" ]]; then
+                echo "$key already set to '$2'."
             else
                 disconnect-cloud
-                set-config "$1" "$2"
+                set-config "$key" "$2"
 
                 if is-enabled; then
                     systemctl restart rmfakecloud-multiproxy
@@ -496,10 +527,16 @@ if [[ $0 = "${BASH_SOURCE[0]}" ]]; then
                 sed '/^#/d; /^\s*$/d' "$conf_dir/config"
                 exit 0
             fi
-            if ! val=$(get-config "$1"); then
+
+            key=$(resolve-config-shorthand "$1")
+            if ! val=$(get-config "$key") ; then
                 exit 1
             fi
-            echo "$1=$val"
+            echo "$key=$val"
+            ;;
+
+        validate)
+            validate-config
             ;;
 
         help | -h | --help)
