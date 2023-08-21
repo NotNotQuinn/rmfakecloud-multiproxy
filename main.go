@@ -8,7 +8,6 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -17,6 +16,9 @@ import (
 	"strings"
 	"syscall"
 )
+
+// A context key to store a formatted string of an HTTP request.
+type httpLog struct{}
 
 func _main() error {
 	cfg, err := getConfig()
@@ -29,30 +31,35 @@ func _main() error {
 		return fmt.Errorf("invalid upstream address: %v", err)
 	}
 
+	logHTTP := cfg.IsSet("LOG_HTTP_REQUESTS")
+	// useOfficialCloud := cfg.IsSet("USE_OFFICIAL_CLOUD")
+
 	srv := http.Server{
 		Handler: &httputil.ReverseProxy{
 			Rewrite: func(req *httputil.ProxyRequest) {
 				// :443 is sometimes appended in 2.15? Never seen it on 3.5.2
 				domain := strings.TrimSuffix(req.In.Host, ":443")
-				requested_url := fmt.Sprintf("%s https://%s%s", req.In.Method, domain, req.In.URL)
-				request_content, err := httputil.DumpRequest(req.Out, true)
-				if err != nil {
-					fmt.Printf("error dumping request %q: %v\n", requested_url, err)
-					return
+				if logHTTP {
+					requested_url := fmt.Sprintf("%s https://%s%s", req.In.Method, domain, req.In.URL)
+					request_content, err := httputil.DumpRequest(req.Out, true)
+					if err != nil {
+						fmt.Printf("error dumping request %q: %v\n", requested_url, err)
+						return
+					}
+
+					// Save this information to print later, because of async printing/buffer issues.
+					req.Out = req.Out.WithContext(context.WithValue(
+						context.Background(),
+						httpLog{},
+						fmt.Sprintf("%s\n%s", requested_url, request_content),
+					))
 				}
 
 				req.Out.URL.Scheme = "https"
-				// Save this information to print later, because of async printing/buffer issues.
-				req.Out = req.Out.WithContext(context.WithValue(
-					context.Background(),
-					"rmfakecloud.orig-request-str",
-					fmt.Sprintf("%s\n%s", requested_url, request_content),
-				))
-
 				ip, err := resolve_host(domain)
 				if err != nil {
-					log.Println(err)
-					log.Printf("Unable to resolve host %q\n", domain)
+					fmt.Println(err)
+					fmt.Printf("Unable to resolve host %q\n", domain)
 					return
 				}
 				req.Out.URL.Host = fmt.Sprint(ip)
@@ -65,14 +72,16 @@ func _main() error {
 				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 			},
 			ModifyResponse: func(r *http.Response) error {
-				request_content := r.Request.Context().Value("rmfakecloud.orig-request-str").(string)
-				response_content, err := httputil.DumpResponse(r, true)
-				// All in one print statement to avoid async printing issues with many requests.
-				if err != nil {
-					fmt.Printf("===== Round Trip: %s\n===\nerror dumping response: %s\n===\n", request_content, err)
-					return err
-				} else {
-					fmt.Printf("===== Round Trip: %s\n===\n%s\n===\n", request_content, response_content)
+				if logHTTP {
+					request_content := r.Request.Context().Value(httpLog{}).(string)
+					response_content, err := httputil.DumpResponse(r, true)
+					// All in one print statement to avoid async printing issues with many requests.
+					if err != nil {
+						fmt.Printf("===== Round Trip: %s\n===\nerror dumping response: %s\n===\n", request_content, err)
+						return err
+					} else {
+						fmt.Printf("===== Round Trip: %s\n===\n%s\n===\n", request_content, response_content)
+					}
 				}
 				return nil
 			},
@@ -92,8 +101,18 @@ func _main() error {
 		close(done)
 	}()
 
-	log.Printf("cert-file=%s key-file=%s listen-addr=%s upstream-url=%s", cfg.Get("TLS_CERTIFICATE_FILE"), cfg.Get("TLS_KEY_FILE"), srv.Addr, upstream.String())
-	if err := srv.ListenAndServeTLS(cfg.Get("TLS_CERTIFICATE_FILE"), cfg.Get("TLS_KEY_FILE")); err != http.ErrServerClosed {
+	fmt.Printf("Configuration (raw):\n")
+	for _, opt := range validOptions {
+		fmt.Printf("  %s=%s\n", opt.Name, cfg.Get(opt.Name))
+	}
+	fmt.Printf("Configuration:\n")
+	fmt.Printf("  srv.Addr: %v\n", srv.Addr)
+	fmt.Printf("  upstream.String(): %v\n", upstream.String())
+
+	certFile := cfg.Get("TLS_CERTIFICATE_FILE")
+	keyFile := cfg.Get("TLS_KEY_FILE")
+
+	if err := srv.ListenAndServeTLS(certFile, keyFile); err != http.ErrServerClosed {
 		return fmt.Errorf("ListenAndServeTLS: %v", err)
 	}
 
@@ -102,6 +121,8 @@ func _main() error {
 }
 
 func main() {
+
+	messages
 	err := _main()
 	if err != nil {
 		fmt.Println(err)
