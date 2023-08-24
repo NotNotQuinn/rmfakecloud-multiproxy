@@ -10,8 +10,11 @@
 //   - Custom receiver methods may be added on the types defined here for our
 //     specific purposes, if needed.
 //
-// The "X-Envoy-Decorator-Operation" header on responses gives a programmer
-// facing name to the network request. For example, GET /integrations/v1/ has the
-// header set to "ingress GetIntegrations".
+// The "X-Envoy-Decorator-Operation" header on responses from the official cloud
+// gives a programmer facing name to the network request. For example,
+// GET /integrations/v1/ has the header set to "ingress GetIntegrations".
 // That is why it's struct is called "GetIntegrationsResp".
+//
+// Unfortunately one cannot reliably check the header to see what request is being made,
+// because rmfakecloud doesn't send this header.
 package network
