@@ -34,14 +34,15 @@ func logHTTP_in_Rewrite(outgoingHost string, req *httputil.ProxyRequest) {
 	}
 
 	// Remove Accept-Encoding (eg. gzip, deflate)
-	// Otherwise we would need to decode and write our own
-	// DumpRequest() func.
+	// Otherwise we would need to decode and write our own DumpRequest() func.
+	// The Go http implementation may add their own 'Accept-Encoding: gzip' header. But if so, it
+	// is decoded transparently when reading resp.Body. (see http.Transport#DisableCompression)
 	req.Out.Header.Del("Accept-Encoding")
 
 	// Save this information to print later, because of async printing/buffer issues.
 	req.Out = req.Out.WithContext(context.WithValue(
 		context.Background(),
-		httpLogKey{},
+		httpLogContextKey{},
 		httpLog{
 			incoming_req: incoming_req,
 			outgoing_req: outgoing_req,
@@ -50,23 +51,33 @@ func logHTTP_in_Rewrite(outgoingHost string, req *httputil.ProxyRequest) {
 	))
 }
 
-func logHTTP_in_ModifyResponse(r *http.Response) {
-	dump := r.Request.Context().Value(httpLogKey{}).(httpLog)
+func dumpResponse(r *http.Response, adverb string) string {
 	response_dump, err := httputil.DumpResponse(r, true)
 
-	response_dump_print := ""
 	if err != nil {
-		response_dump_print = fmt.Sprintf("error dumping response: %s", err)
+		return fmt.Sprintf("error dumping %s response for: %s", adverb, err)
 	} else {
-		response_dump_print = string(response_dump)
+		return string(response_dump)
 	}
+}
+
+func printHttpLog(r *http.Response, unmodified_resp string, modified bool) {
+	dump := r.Request.Context().Value(httpLogContextKey{}).(httpLog)
+
 	// All in one print statement to avoid async printing issues with many requests.
 	msg := "------ Round Trip ------\n"
 	msg += "<=== incoming " + dump.incoming_req + "\n"
 	msg += "===> outgoing " + dump.outgoing_req + "\n"
 	msg += dump.request_dump + "\n"
-	msg += "===\n"
-	msg += response_dump_print + "\n"
+	msg += "=== Original Server Response"
+	if !modified {
+		msg += " (wasn't modified)"
+	}
+	msg += "\n" + unmodified_resp + "\n"
+	if modified {
+		msg += "=== Modified Response\n"
+		msg += dumpResponse(r, "modified") + "\n"
+	}
 	msg += "===\n"
 	fmt.Print(msg)
 }
@@ -89,7 +100,6 @@ func Rewrite(cfg *ConfigFile, upstream *url.URL, req *httputil.ProxyRequest) {
 		outgoingHost = strings.TrimSuffix(upstream.Host, ":443")
 		req.SetURL(upstream)
 		req.Out.Host = upstream.Host
-		req.Out.Header.Set("Host", upstream.Host)
 	}
 
 	if cfg.IsSet("LOG_HTTP_REQUESTS") {
@@ -98,35 +108,40 @@ func Rewrite(cfg *ConfigFile, upstream *url.URL, req *httputil.ProxyRequest) {
 }
 
 func ModifyResponse(cfg *ConfigFile, r *http.Response) error {
-	operation := r.Header.Get("X-Envoy-Decorator-Operation")
-	if operation == "ingress GetIntegrations" {
-		fmt.Println()
+	var modified bool = false
+	if cfg.IsSet("LOG_HTTP_REQUESTS") {
+		unmodified_resp := dumpResponse(r, "unmodified")
+		// Capture variables by reference
+		defer func() { printHttpLog(r, unmodified_resp, modified) }()
+	}
+	if r.Request.Method == "GET" && r.Request.URL.Path == "/integrations/v1/" && r.StatusCode == 200 {
+		modified = true
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
 			return fmt.Errorf("unable to read response body: %w", err)
 		}
 		var parsedResp network.GetIntegrationsResp
 		if err := json.Unmarshal(body, &parsedResp); err != nil {
-			return fmt.Errorf("unable to unmarshal: %w", err)
+			return fmt.Errorf("unable to unmarshal integration: %w", err)
+		}
+		if parsedResp.Integrations == nil {
+			parsedResp.Integrations = []network.Integration{}
 		}
 		parsedResp.Integrations = append(parsedResp.Integrations, network.Integration{
 			ID:         "onepiece",
-			UserID:     "guest",
+			UserID:     "guest-onepiece",
 			Name:       "One Piece",
 			Added:      time.Now(),
-			ProviderID: "vint:onepiece",
+			ProviderID: "virtual-integration:onepiece",
 			Issues:     []any{},
 		})
 		encodedResp, err := json.Marshal(parsedResp)
 		if err != nil {
-			return fmt.Errorf("unable to marshal: %w", err)
+			return fmt.Errorf("unable to marshal integration: %w", err)
 		}
 		r.Body = io.NopCloser(bytes.NewReader(encodedResp))
 		r.Header.Set("Content-Length", fmt.Sprint(len(encodedResp)))
 		r.ContentLength = int64(len(encodedResp))
-	}
-	if cfg.IsSet("LOG_HTTP_REQUESTS") {
-		logHTTP_in_ModifyResponse(r)
 	}
 	return nil
 }
@@ -134,7 +149,7 @@ func ModifyResponse(cfg *ConfigFile, r *http.Response) error {
 // A context key to store a formatted HTTP request.
 //
 // Stores httpLog{...} struct
-type httpLogKey struct{}
+type httpLogContextKey struct{}
 type httpLog struct {
 	incoming_req string
 	outgoing_req string
