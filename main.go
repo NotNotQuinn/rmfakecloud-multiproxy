@@ -24,48 +24,77 @@ import (
 )
 
 // To be called in Rewrite()
-func logHTTP_in_Rewrite(domain string, req *httputil.ProxyRequest) {
-	requested_url := fmt.Sprintf("%s https://%s%s", req.In.Method, domain, req.In.URL)
-	request_content, err := httputil.DumpRequest(req.Out, true)
+func logHTTP_in_Rewrite(outgoingHost string, req *httputil.ProxyRequest) {
+	incoming_req := fmt.Sprintf("%s https://%s%s", req.In.Method, req.In.Host, req.In.URL.RequestURI())
+	outgoing_req := fmt.Sprintf("%s https://%s%s", req.Out.Method, outgoingHost, req.Out.URL.RequestURI())
+	request_dump, err := httputil.DumpRequest(req.Out, true)
 	if err != nil {
-		fmt.Printf("error dumping request %q: %v\n", requested_url, err)
+		fmt.Printf("error dumping request %q: %v\n", incoming_req, err)
 		return
 	}
+
+	// Remove Accept-Encoding (eg. gzip, deflate)
+	// Otherwise we would need to decode and write our own
+	// DumpRequest() func.
+	req.Out.Header.Del("Accept-Encoding")
 
 	// Save this information to print later, because of async printing/buffer issues.
 	req.Out = req.Out.WithContext(context.WithValue(
 		context.Background(),
-		httpLog{},
-		fmt.Sprintf("%s\n%s", requested_url, request_content),
+		httpLogKey{},
+		httpLog{
+			incoming_req: incoming_req,
+			outgoing_req: outgoing_req,
+			request_dump: string(request_dump),
+		},
 	))
 }
 
 func logHTTP_in_ModifyResponse(r *http.Response) {
-	request_content := r.Request.Context().Value(httpLog{}).(string)
-	response_content, err := httputil.DumpResponse(r, true)
-	// All in one print statement to avoid async printing issues with many requests.
+	dump := r.Request.Context().Value(httpLogKey{}).(httpLog)
+	response_dump, err := httputil.DumpResponse(r, true)
+
+	response_dump_print := ""
 	if err != nil {
-		fmt.Printf("===== Round Trip: %s\n===\nerror dumping response: %s\n===\n", request_content, err)
+		response_dump_print = fmt.Sprintf("error dumping response: %s", err)
 	} else {
-		fmt.Printf("===== Round Trip: %s\n===\n%s\n===\n", request_content, response_content)
+		response_dump_print = string(response_dump)
 	}
+	// All in one print statement to avoid async printing issues with many requests.
+	msg := "------ Round Trip ------\n"
+	msg += "<=== incoming " + dump.incoming_req + "\n"
+	msg += "===> outgoing " + dump.outgoing_req + "\n"
+	msg += dump.request_dump + "\n"
+	msg += "===\n"
+	msg += response_dump_print + "\n"
+	msg += "===\n"
+	fmt.Print(msg)
 }
 
-func Rewrite(cfg *ConfigFile, req *httputil.ProxyRequest) {
-	// :443 is sometimes appended in 2.15? Never seen it on 3.5.2
-	domain := strings.TrimSuffix(req.In.Host, ":443")
-	if cfg.IsSet("LOG_HTTP_REQUESTS") {
-		logHTTP_in_Rewrite(domain, req)
+func Rewrite(cfg *ConfigFile, upstream *url.URL, req *httputil.ProxyRequest) {
+	outgoingHost := ""
+
+	if cfg.IsSet("USE_OFFICIAL_CLOUD") {
+		outgoingHost = strings.TrimSuffix(req.In.Host, ":443")
+		req.Out.URL.Scheme = "https"
+		ip, err := resolve_host(outgoingHost)
+		if err != nil {
+			fmt.Println(err)
+			fmt.Printf("Unable to resolve host %q\n", outgoingHost)
+			return
+		}
+		req.Out.URL.Host = fmt.Sprint(ip)
+		// req.Out.Header.Set("Host", outgoingHost)
+	} else {
+		outgoingHost = strings.TrimSuffix(upstream.Host, ":443")
+		req.SetURL(upstream)
+		req.Out.Host = upstream.Host
+		req.Out.Header.Set("Host", upstream.Host)
 	}
 
-	req.Out.URL.Scheme = "https"
-	ip, err := resolve_host(domain)
-	if err != nil {
-		fmt.Println(err)
-		fmt.Printf("Unable to resolve host %q\n", domain)
-		return
+	if cfg.IsSet("LOG_HTTP_REQUESTS") {
+		logHTTP_in_Rewrite(outgoingHost, req)
 	}
-	req.Out.URL.Host = fmt.Sprint(ip)
 }
 
 func ModifyResponse(cfg *ConfigFile, r *http.Response) error {
@@ -102,8 +131,15 @@ func ModifyResponse(cfg *ConfigFile, r *http.Response) error {
 	return nil
 }
 
-// A context key to store a formatted string of an HTTP request.
-type httpLog struct{}
+// A context key to store a formatted HTTP request.
+//
+// Stores httpLog{...} struct
+type httpLogKey struct{}
+type httpLog struct {
+	incoming_req string
+	outgoing_req string
+	request_dump string
+}
 
 func _main() error {
 	cfg, err := getConfig()
@@ -119,7 +155,7 @@ func _main() error {
 	srv := http.Server{
 		Handler: &httputil.ReverseProxy{
 			Rewrite: func(req *httputil.ProxyRequest) {
-				Rewrite(cfg, req)
+				Rewrite(cfg, upstream, req)
 			},
 			// Ignore TLS verify, because we are accessing by IP address
 			// remarkable's certs don't include ip records. """impossible""" to verify.
