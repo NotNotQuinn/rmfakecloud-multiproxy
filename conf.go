@@ -318,7 +318,7 @@ func genDocs() string {
 	doc += "\n"
 	doc += "# Note: Most of the time, `multiproxyctl` will generate\n"
 	doc += "# and populate the required fields for you after generating\n"
-	doc += "# certs when you run `multiproxyctl enable`.\n"
+	doc += "# certs when you run `multiproxyctl enable` for the first time.\n"
 	doc += "\n"
 	doc += "# Syntax:\n"
 	doc += "#   KEY=VALUE trailing tabs and spaces trimmed\n"
