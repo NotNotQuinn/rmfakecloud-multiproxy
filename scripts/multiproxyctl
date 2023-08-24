@@ -308,10 +308,9 @@ subjectKeyIdentifier = hash
 subjectAltName=@san
 [ san ]
 DNS.1 = *.appspot.com
-DNS.2 = my.remarkable.com
-DNS.3 = *.cloud.remarkable.com
-DNS.4 = ping.remarkable.com
-DNS.5 = *.remarkable.com
+DNS.2 = *.cloud.remarkable.com
+DNS.3 = *.remarkable.com
+DNS.4 = *.cloud.remarkable.engineering
 CSR
 
         openssl req -new -config "$csr" \
