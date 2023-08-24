@@ -309,7 +309,7 @@ subjectAltName=@san
 [ san ]
 DNS.1 = *.appspot.com
 DNS.2 = my.remarkable.com
-DNS.3 = internal.cloud.remarkable.com
+DNS.3 = *.cloud.remarkable.com
 DNS.4 = ping.remarkable.com
 DNS.5 = *.remarkable.com
 CSR
@@ -351,6 +351,7 @@ $proxy_listen local.appspot.com
 $proxy_listen my.remarkable.com
 $proxy_listen internal.cloud.remarkable.com
 $proxy_listen ping.remarkable.com
+$proxy_listen webapp-prod.cloud.remarkable.engineering
 EOF
 }
 
@@ -362,6 +363,7 @@ uninstall-hosts() {
     sed -i '/ my.remarkable.com$/d' "$hosts_path"
     sed -i '/ internal.cloud.remarkable.com$/d' "$hosts_path"
     sed -i '/ ping.remarkable.com$/d' "$hosts_path"
+    sed -i '/ webapp-prod.cloud.remarkable.engineering$/d' "$hosts_path"
 }
 
 # Try to make a full install of rmfakecloud-multiproxy
